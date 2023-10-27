@@ -11,11 +11,31 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_availability_zones" "available" {}
+data "aws_canonical_user_id" "current" {}
+data "aws_cloudfront_log_delivery_canonical_user_id" "cloudfront" {}
+
 data "archive_file" "lambda" {
   type        = "zip"
   source_file = "${path.root}/applications/team-projet/lambda_function.py"
   output_path = "${path.root}/out/team-project/lambda_function_payload.zip"
 }
+
+locals {
+  name        = "hub-mft"
+  bucket_name = "${local.name}-s3-bucket"
+
+  tags = {
+    Name = local.name
+  }
+}
+
+
+
+################################################################################
+# Lambda
+################################################################################
 
 module "lambda_function" {
   source = "./modules/lambda"
@@ -78,6 +98,186 @@ module "lambda_function" {
   #     }
   #   }
 }
+
+
+
+data "aws_sns_topic" "cloud_security_scan" {
+  name = "sample-topicssss"
+
+}
+
+resource "aws_lambda_permission" "with_sns" {
+  statement_id  = "AllowExecutionFromSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_function.lambda_function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = data.aws_sns_topic.cloud_security_scan.arn
+}
+
+
+
+################################################################################
+# SNS
+################################################################################
+
+
+module "sns" {
+  source = "./modules/aws_sns_topic"
+
+  name              = "${local.name}-avscan-sns-topic-${var.env}"
+  signature_version = 2
+
+  data_protection_policy = jsonencode(
+    {
+      Description = "Deny Inbound Address"
+      Name        = "DenyInboundEmailAdressPolicy"
+      Statement = [
+        {
+          "DataDirection" = "Inbound"
+          "DataIdentifier" = [
+            "arn:aws:dataprotection::aws:data-identifier/EmailAddress",
+          ]
+          "Operation" = {
+            "Deny" = {}
+          }
+          "Principal" = [
+            "*",
+          ]
+          "Sid" = "DenyInboundEmailAddress"
+        },
+      ]
+      Version = "2021-06-01"
+    }
+  )
+
+  subscriptions = {
+    lambda = {
+      protocol = "lambda"
+      endpoint = module.lambda_function.lambda_function_arn
+      # filter_policy = {
+      #   "notification" = ["scanResult"]
+      # }
+    }
+  }
+
+  tags = local.tags
+}
+
+
+
+
+################################################################################
+# S3
+################################################################################
+
+resource "aws_kms_key" "objects" {
+  description             = "KMS key is used to encrypt bucket objects"
+  deletion_window_in_days = 7
+}
+
+resource "aws_iam_role" "this" {
+  name               = "avscan-bucket-role"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Effect": "Allow",
+      "Sid": ""
+    }
+  ]
+}
+EOF
+}
+
+data "aws_iam_policy_document" "bucket_policy" {
+  statement {
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.this.arn]
+    }
+
+    actions = [
+      "s3:*",
+    ]
+
+    resources = [
+      "arn:aws:s3:::${local.bucket_name}-${var.env}",
+    ]
+  }
+}
+
+
+module "s3" {
+  source = "./modules/aws_s3"
+
+  bucket = "${local.bucket_name}-${var.env}"
+
+  force_destroy = true
+  tags = {
+    Owner = "eft"
+  }
+  attach_policy = true
+  policy        = data.aws_iam_policy_document.bucket_policy.json
+  # acl           = "private" # "acl" conflicts with "grant" and "owner"
+}
+
+
+# locals {
+#   region = "us-east-1"
+#   name   = "ex-${basename(path.cwd)}"
+
+#   vpc_cidr = "10.0.0.0/16"
+#   azs      = slice(data.aws_availability_zones.available.names, 0, 3)
+
+#   container_name = "ecsdemo-frontend"
+#   container_port = 3000
+
+#   tags = {
+#     Name       = local.name
+#     Example    = local.name
+#     Repository = "https://github.com/terraform-aws-modules/terraform-aws-ecs"
+#   }
+# }
+
+################################################################################
+# Cluster
+################################################################################
+
+module "ecs_cluster" {
+  source = "./modules/ecs_cluster"
+
+  cluster_name = "${local.name}-sftp-push-cluster"
+
+  # Capacity provider
+  fargate_capacity_providers = {
+    FARGATE = {
+      default_capacity_provider_strategy = {
+        weight = 50
+        base   = 20
+      }
+    }
+    FARGATE_SPOT = {
+      default_capacity_provider_strategy = {
+        weight = 50
+      }
+    }
+  }
+
+  tags = local.tags
+}
+
+
+
+
+
+
+
+
 
 
 ##### Create s3 bucket and map to lambda as event trigger

@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"profile_generator_lambda","Source":"registry.terraform.io/terraform-aws-modules/lambda/aws","Version":"2.7.0","Dir":".terraform/modules/profile_generator_lambda"}]}
