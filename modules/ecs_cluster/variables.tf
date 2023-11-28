@@ -111,7 +111,7 @@ variable "task_exec_iam_role_name" {
 variable "task_exec_iam_role_use_name_prefix" {
   description = "Determines whether the IAM role name (`task_exec_iam_role_name`) is used as a prefix"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "task_exec_iam_role_path" {
