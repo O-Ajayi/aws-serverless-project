@@ -1,0 +1,52 @@
+version: 1.0.0
+title: >-
+  Expect a quick response from a request to a server on an  EC2 instance when
+  the processor is loaded description: Expect a quick response when the processor
+  is loaded with an AWS SSM command.
+description: Expect a quick response when the processor is loaded with an AWS SSM command.
+tags:
+  - stress-memory
+configuration:
+  name_space: 'public'
+  cluster_name: 'blueprint'
+  aws_region: 'us-east-1'
+  test_instance_tag_key: 'tag:aws:eks:cluster-name'
+  test_instance_tag_value: 'blueprint'
+  pod_name_pattern: 'spring-frontend'
+  output_bucket_name: 'resiliencyvr-package-build-bucket-demoalpha'
+steady-state-hypothesis:
+  title: Infrastructure is healthy
+  probes:
+  - type: probe
+    name: pods-healthy
+    tolerance: True
+    provider:
+      type: python
+      module: experimentvr.k8s.probes
+      func: pod_healthy
+      arguments:
+         output_s3_bucket_name: ${output_bucket_name}
+         name_space: ${name_space} 
+         cluster_name: ${cluster_name} 
+         health_check_port: '80'
+         health_check_path: health
+         pod_name_pattern: ${pod_name_pattern}
+         tag_key: ${test_instance_tag_key}
+         tag_value: ${test_instance_tag_value}
+         region: ${aws_region}
+method:
+  - type: action
+    name: delete_pod
+    provider:
+      type: python
+      module: experimentvr.k8s.actions
+      func: delete_pod
+      arguments:
+        region: ${aws_region}
+        name_space: ${name_space}
+        pod_name_pattern: ${pod_name_pattern}
+        tag_key: ${test_instance_tag_key}
+        tag_value: ${test_instance_tag_value}
+        output_s3_bucket_name: 'resiliencyvr-package-build-bucket-demoalpha'
+    pauses:
+        after: 10

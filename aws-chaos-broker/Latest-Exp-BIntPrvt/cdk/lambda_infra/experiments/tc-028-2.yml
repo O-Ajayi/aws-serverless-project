@@ -1,0 +1,30 @@
+version: 1.0.0
+title: Expect instabiity and missed SLA for transactions on a K8s worker node when root volume is exhausted. 
+description: Expect instabiity and missed SLA for transactions on a K8s worker node when root volume is exhausted. 
+tags:
+  - root volume exhaustion
+  - all
+configuration:
+  test_instance_tag_key: 'tag:eks:cluster-name'
+  test_instance_tag_value: 'blueprint'
+  name_space: 'public'
+  output_bucket: 'resiliencyvr-package-build-bucket-demoalpha'
+  aws_region: 'us-east-1'
+method:
+  - type: action
+    name: root-vol-exhaustion
+    provider:
+      type: python
+      module: experimentvr.ec2.actions
+      func: root_vol_exhaustion
+      arguments:
+        targets:
+        test_target_type: 'ALL'
+        tag_key: ${test_instance_tag_key}
+        tag_value: ${test_instance_tag_value}
+        region: ${aws_region}
+        workers: '55'
+        filesize: '4'
+        duration: '60'
+    pauses:
+      after: 10

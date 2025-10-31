@@ -1,0 +1,67 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [ 
+      {
+        "Sid": "SSMPermissions",
+        "Action": [
+          "ssm:SendCommand",
+          "ssm:ListCommandInvocations"
+        ],
+        "Effect": "Allow",
+        "Resource": "*"
+      },
+      {
+        "Sid": "S3Permissions",
+        "Action": [
+          "s3:GetObject",
+          "s3:Listbucket",
+          "s3:PutObject"
+        ],
+        "Effect": "Allow",
+        "Resource": [ 
+          "${experiment_bucket_arn}",
+          "${experiment_bucket_arn}/*"
+        ]
+      },
+      {
+        "Sid": "EC2Permissions",
+        "Action": [
+          "ec2:DescribeInstances"
+        ],
+        "Effect": "Allow",
+        "Resource": "*"
+      },
+      {
+        "Sid": "DynamoDBPermissions",
+        "Action": [
+          "dynamodb:PutItem"
+        ],
+        "Effect": "Allow",
+        "Resource": "*"
+      },
+      {
+        "Sid": "EC2ResourceLevelPermissions",
+        "Action": [
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          "ec2:StopInstances",
+          "ec2:StartInstances"
+        ],
+        "Effect": "Allow",
+        "Resource": "*",
+        "Condition": {
+          "StringEquals": {
+            "ec2:ResourceTag/Type": "Resiliency"
+          }
+        }
+      },
+      {
+        "Sid": "EKSPermissions",
+        "Action": [
+          "eks:*"
+        ],
+        "Effect": "Allow",
+        "Resource": "*"
+       }
+    ]
+}

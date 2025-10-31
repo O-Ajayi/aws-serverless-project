@@ -1,0 +1,49 @@
+{
+    "Payload": {
+      "list": [
+        {
+          "experiment_source": "Demo-Kubernetes(EKS)-Worker Node (Pod)-State-TerminationCrash.yml",
+          "bucket_name": "resiliencyvr-package-build-bucket-demo",
+          "output_config": {
+            "S3": {
+              "bucket_name": "resiliencyvr-package-build-bucket-demo",
+              "path": "experiment_journals"
+            },
+            "OPENSEARCH": {
+              "index": "resiliency-experiment-journals",
+              "host": "search-resiliency-health-index-5kbdxdwunwcdt7u4ti4musfw34.us-east-1.es.amazonaws.com"
+            }
+          }
+        },
+        {
+          "experiment_source": "Demo-Kubernetes(EKS)-Worker Node (EC2)-Network-PacketLoss.yml",
+          "bucket_name": "resiliencyvr-package-build-bucket-demo",
+          "output_config": {
+            "S3": {
+              "bucket_name": "resiliencyvr-package-build-bucket-demo",
+              "path": "experiment_journals"
+            },
+            "OPENSEARCH": {
+              "index": "resiliency-experiment-journals",
+              "host": "search-resiliency-health-index-5kbdxdwunwcdt7u4ti4musfw34.us-east-1.es.amazonaws.com"
+            }
+          }
+        },
+        {
+          "experiment_source": "Demo-Kubernetes(EKS)-Worker Node (EC2)-Network-Latency.yml",
+          "bucket_name": "resiliencyvr-package-build-bucket-demo",
+          "output_config": {
+            "S3": {
+              "bucket_name": "resiliencyvr-package-build-bucket-demo",
+              "path": "experiment_journals"
+            },
+            "OPENSEARCH": {
+              "index": "resiliency-experiment-journals",
+              "host": "search-resiliency-health-index-5kbdxdwunwcdt7u4ti4musfw34.us-east-1.es.amazonaws.com"
+            }
+          }
+        }
+      ],
+      "state": "pending"
+    }
+  }

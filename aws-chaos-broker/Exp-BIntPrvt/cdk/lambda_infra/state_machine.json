@@ -1,0 +1,86 @@
+{
+  "StartAt": "FirstChoiceState",
+  "States": {
+    "FirstChoiceState": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Payload.state",
+          "StringEquals": "pending",
+          "Next": "MapState"
+        }
+      ]
+    },
+    "Incorrect state submitted": {
+      "Type": "Pass",
+      "Next": "Exit"
+    },
+    "Exit": {
+      "Type": "Fail",
+      "End": true
+    },
+    "MapState": {
+      "Type": "Map",
+      "End": true,
+      "InputPath": "$.Payload.list",
+      "Iterator": {
+        "StartAt": "ProcessPayload",
+        "States": {
+          "ProcessPayload": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "arn:aws:lambda:us-east-1:899456967600:function:ExperimentLambdaFunction",
+              "Payload.$": "$"
+            },
+            "Next": "ChoiceState",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "MaxAttempts": 2
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "Next": "ProcessingFailed"
+              }
+            ]
+          },
+          "ProcessingFailed": {
+            "Type": "Fail"
+          },
+          "ChoiceState": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.Payload.state",
+                "StringEquals": "pending",
+                "Next": "IsPendingState"
+              },
+              {
+                "Variable": "$.Payload.state",
+                "StringEquals": "done",
+                "Next": "Completed"
+              }
+            ]
+          },
+          "IsPendingState": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ProcessPayload"
+          },
+          "Completed": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "MaxConcurrency": 1
+    }
+  }
+}
