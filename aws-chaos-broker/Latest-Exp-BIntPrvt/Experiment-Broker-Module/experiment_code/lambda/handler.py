@@ -5,6 +5,7 @@ import os
 import json
 import boto3
 import traceback
+from pathlib import Path
 
 from datetime import datetime
 
@@ -28,9 +29,17 @@ def handler(event, context):
 
     Provide the following event data to invoke the function:
 
+    For S3 (AWS Lambda):
     {
       "experiment_source": "authorizations/tc001.yml",
       "bucket_name": "chaos-testing-bucket",
+      ...(additional values for running experiment: AZ, Region, Environment, etc.)
+    }
+    
+    For local testing:
+    {
+      "local_mode": true,
+      "experiment_source": "/path/to/experiment.yml",  # or relative path
       ...(additional values for running experiment: AZ, Region, Environment, etc.)
     }
     """
@@ -39,22 +48,38 @@ def handler(event, context):
     experiment_source = event.get("experiment_source")
     experiment_state = event.get("state")
     output_config = event.get("output_config")
+    local_mode = event.get("local_mode", False)
+    
     if experiment_source:
         logger.info("ChaosToolkit attempting to load experiment: %s", experiment_source)
 
-    try:
-        get_object(
-            bucket_name=event.get("bucket_name"),
-            filename=experiment_source,
-            configuration=event.get("configuration", {}),
-        )
-    except Exception as e:
-        logger.exception("Unable to retrieve experiment %s: %s", experiment_source, e)
-        raise
+    # Load experiment from local file or S3
+    if local_mode:
+        # Local mode: load from file system
+        if not os.path.isabs(experiment_source):
+            # If relative path, try to resolve from current directory
+            experiment_source = os.path.abspath(experiment_source)
+        
+        if not os.path.exists(experiment_source):
+            raise FileNotFoundError(f"Experiment file not found: {experiment_source}")
+        
+        logger.info("Loading experiment from local file: %s", experiment_source)
+        experiment = load_experiment(experiment_source)
+    else:
+        # AWS Lambda mode: load from S3
+        try:
+            get_object(
+                bucket_name=event.get("bucket_name"),
+                filename=experiment_source,
+                configuration=event.get("configuration", {}),
+            )
+        except Exception as e:
+            logger.exception("Unable to retrieve experiment %s: %s", experiment_source, e)
+            raise
 
-    experiment = load_experiment(
-        create_presigned_url(event.get("bucket_name"), experiment_source)
-    )
+        experiment = load_experiment(
+            create_presigned_url(event.get("bucket_name"), experiment_source)
+        )
 
     experiment_journal = run_experiment(experiment)
 
@@ -67,42 +92,48 @@ def handler(event, context):
     else:
         event.update({"state": "failed"})
 
-    if "OPENSEARCH" in output_config.keys():
-        try:
-            upload_experiment_journal(
-                journal=experiment_journal, output_config=output_config["OPENSEARCH"]
-            )
-            logger.info(f"Experiment journal uploaded to Opensearch")
-        except Exception:
-            exc_str = traceback.format_exc()
-            logger.error(
-                f"Unable to upload experiment journal to Opensearch: {exc_str}"
-            )
+    # Only upload to external services if not in local mode and config is provided
+    if not local_mode and output_config:
+        if "OPENSEARCH" in output_config.keys():
+            try:
+                upload_experiment_journal(
+                    journal=experiment_journal, output_config=output_config["OPENSEARCH"]
+                )
+                logger.info(f"Experiment journal uploaded to Opensearch")
+            except Exception:
+                exc_str = traceback.format_exc()
+                logger.error(
+                    f"Unable to upload experiment journal to Opensearch: {exc_str}"
+                )
 
-    if "S3" in output_config.keys():
-        try:
-            key = output_config["S3"]["path"] + str(
-                datetime.now().replace(second=0, microsecond=0)
-            ).replace(" ", "-")
-            output_s3 = put_object(
-                bucket_name=output_config["S3"]["bucket_name"],
-                key=key,
-                contents=json.dumps(experiment_journal),
-            )
-            logger.info(f"Experiment journal uploaded to S3 as: {key} ")
-        except Exception:
-            exc_str = traceback.format_exc()
-            logger.error(f"Unable to upload experiment journal to S3: {exc_str}")
+        if "S3" in output_config.keys():
+            try:
+                key = output_config["S3"]["path"] + str(
+                    datetime.now().replace(second=0, microsecond=0)
+                ).replace(" ", "-")
+                output_s3 = put_object(
+                    bucket_name=output_config["S3"]["bucket_name"],
+                    key=key,
+                    contents=json.dumps(experiment_journal),
+                )
+                logger.info(f"Experiment journal uploaded to S3 as: {key} ")
+            except Exception:
+                exc_str = traceback.format_exc()
+                logger.error(f"Unable to upload experiment journal to S3: {exc_str}")
 
     event.update({"response": json.dumps(experiment_journal)})
     event.update({"report_capture": str(report_capture.getvalue())})
 
-    session = boto3.Session()
-    dynamodb = session.resource("dynamodb")
+    # Only write to DynamoDB if not in local mode
+    if not local_mode:
+        session = boto3.Session()
+        dynamodb = session.resource("dynamodb")
 
-    response = dynamodb.Table("experiment_pipeline_alpha_reporting").put_item(
-        Item={"ISO8601": datetime.now().isoformat(), "event": event}
-    )
+        response = dynamodb.Table("experiment_pipeline_alpha_reporting").put_item(
+            Item={"ISO8601": datetime.now().isoformat(), "event": event}
+        )
+    else:
+        logger.info("Local mode: Skipping DynamoDB write")
 
     return event
 
