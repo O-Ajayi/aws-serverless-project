@@ -14,7 +14,7 @@ from botocore.config import Config
 from experimentvr.s3.shared import get_object, create_presigned_url, put_object
 from chaoslib.experiment import run_experiment
 from chaoslib.loader import load_experiment
-from chaostoolkit.logging import configure_logger
+from chaoslib.log import configure_logger
 from logzero import logger
 
 

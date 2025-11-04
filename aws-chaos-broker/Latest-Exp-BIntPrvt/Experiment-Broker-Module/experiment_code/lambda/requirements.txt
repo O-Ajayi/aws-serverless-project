@@ -1,0 +1,26 @@
+# Core dependencies for handler.py
+boto3>=1.26.0
+botocore>=1.29.0
+
+# ChaosToolkit dependencies
+chaostoolkit>=1.18.0
+chaostoolkit-aws>=0.29.0
+chaostoolkit-kubernetes>=0.28.0
+
+# Logging
+logzero>=1.7.0
+
+# OpenSearch support
+opensearch-py>=1.0.0
+
+# Testing dependencies
+pytest>=6.0.0
+pytest-cov>=2.12.0
+pytest-mock>=3.6.1
+coverage>=5.5.0
+
+# The experimentvr package (local module)
+# Note: You may need to install this separately using:
+# pip install -e ../ (from experiment_code directory)
+# or
+# python setup.py develop (from experiment_code directory)
