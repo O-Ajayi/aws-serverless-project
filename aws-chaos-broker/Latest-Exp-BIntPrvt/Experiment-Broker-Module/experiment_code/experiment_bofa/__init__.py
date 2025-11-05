@@ -1,4 +1,4 @@
-# # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # from typing import List
 
 # from chaoslib.discovery.discover import (
@@ -9,8 +9,8 @@
 # from chaoslib.types import DiscoveredActivities, Discovery
 # from logzero import logger
 
-# __version__ = "0.3.35"
-# __all__ = ["__version__", "discover"]
+__version__ = "0.3.35"
+__all__ = ["__version__", "discover"]
 
 
 # def discover(discover_system: bool = True) -> Discovery:

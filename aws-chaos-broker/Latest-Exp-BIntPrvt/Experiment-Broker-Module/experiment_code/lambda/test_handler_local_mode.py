@@ -3,8 +3,8 @@ Test suite for handler local_mode functionality.
 
 This test file validates that the handler correctly handles local_mode:
 - Loads experiments from local filesystem instead of S3
-- Skips DynamoDB writes in local mode
-- Skips S3 and OpenSearch uploads in local mode
+- Skips ECS metadata processing in local mode
+- Skips S3 uploads in local mode
 - Handles relative and absolute paths correctly
 - Properly handles success/failure states
 
@@ -15,6 +15,7 @@ To run these tests:
 
 Prerequisites:
     - All dependencies from requirements.txt must be installed
+    - Local packages (experiment_bofa, experiment_runner_lite, experiment_broker_logging) must be installed
     - Tests use mocking, so no actual AWS credentials needed
 """
 import unittest
@@ -69,6 +70,7 @@ method:
             "deviated": False,
             "steady_state_hypothesis": {"status": "probe"},
             "experiment": {"title": "Test Experiment"},
+            "experiment_metadata": {},
         }
 
     def tearDown(self):
@@ -78,9 +80,10 @@ method:
         if os.path.exists(self.temp_dir):
             os.rmdir(self.temp_dir)
 
-    @patch('handler.boto3')
-    @patch('handler.upload_experiment_journal')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
     @patch('handler.put_object')
+    @patch('handler.get_object_with_type')
     @patch('handler.run_experiment')
     @patch('handler.load_experiment')
     @patch('handler.configure_logger')
@@ -89,9 +92,9 @@ method:
         mock_configure_logger,
         mock_load_experiment,
         mock_run_experiment,
+        mock_get_object_with_type,
         mock_put_object,
-        mock_upload_journal,
-        mock_boto3
+        mock_get_task_info
     ):
         """Test that local_mode loads experiment from file system instead of S3"""
         # Setup mocks
@@ -115,20 +118,21 @@ method:
         mock_run_experiment.assert_called_once_with(mock_experiment)
         
         # Should NOT call S3 functions
-        mock_boto3.Session.assert_not_called()
-        
-        # Should NOT upload to external services
+        mock_get_object_with_type.assert_not_called()
         mock_put_object.assert_not_called()
-        mock_upload_journal.assert_not_called()
+        
+        # Should NOT call ECS metadata functions
+        mock_get_task_info.assert_not_called()
         
         # Should update state to done
         self.assertEqual(result["state"], "done")
         self.assertIn("response", result)
         self.assertIn("report_capture", result)
 
-    @patch('handler.boto3')
-    @patch('handler.upload_experiment_journal')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
     @patch('handler.put_object')
+    @patch('handler.get_object_with_type')
     @patch('handler.run_experiment')
     @patch('handler.load_experiment')
     @patch('handler.configure_logger')
@@ -137,9 +141,9 @@ method:
         mock_configure_logger,
         mock_load_experiment,
         mock_run_experiment,
+        mock_get_object_with_type,
         mock_put_object,
-        mock_upload_journal,
-        mock_boto3
+        mock_get_task_info
     ):
         """Test that local_mode resolves relative paths correctly"""
         # Setup mocks
@@ -162,7 +166,6 @@ method:
             result = handler(event, MockContext())
 
             # Should resolve to absolute path
-            expected_abs_path = os.path.abspath(relative_path)
             mock_load_experiment.assert_called_once()
             call_args = mock_load_experiment.call_args[0][0]
             self.assertTrue(os.path.isabs(call_args))
@@ -186,18 +189,21 @@ method:
 
         self.assertIn("Experiment file not found", str(context.exception))
 
-    @patch('handler.boto3')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
+    @patch('handler.put_object')
     @patch('handler.run_experiment')
     @patch('handler.load_experiment')
     @patch('handler.configure_logger')
-    def test_local_mode_skips_dynamodb(
+    def test_local_mode_skips_ecs_metadata(
         self,
         mock_configure_logger,
         mock_load_experiment,
         mock_run_experiment,
-        mock_boto3
+        mock_put_object,
+        mock_get_task_info
     ):
-        """Test that local_mode skips DynamoDB writes"""
+        """Test that local_mode skips ECS metadata processing"""
         # Setup mocks
         mock_experiment = {"title": "Test Experiment"}
         mock_load_experiment.return_value = mock_experiment
@@ -211,59 +217,61 @@ method:
 
         result = handler(event, MockContext())
 
-        # Should NOT create DynamoDB session
-        mock_boto3.Session.assert_not_called()
+        # Should NOT call ECS metadata functions
+        mock_get_task_info.assert_not_called()
 
-    @patch('handler.boto3')
-    @patch('handler.upload_experiment_journal')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
     @patch('handler.put_object')
+    @patch('handler.load_experiment_from_object')
+    @patch('handler.get_object_with_type')
     @patch('handler.run_experiment')
-    @patch('handler.load_experiment')
-    @patch('handler.get_object')
-    @patch('handler.create_presigned_url')
     @patch('handler.configure_logger')
     def test_normal_mode_uses_s3(
         self,
         mock_configure_logger,
-        mock_create_presigned_url,
-        mock_get_object,
-        mock_load_experiment,
         mock_run_experiment,
+        mock_get_object_with_type,
+        mock_load_experiment_from_object,
         mock_put_object,
-        mock_upload_journal,
-        mock_boto3
+        mock_get_task_info
     ):
         """Test that normal mode (not local_mode) uses S3"""
         # Setup mocks
         mock_experiment = {"title": "Test Experiment"}
-        mock_load_experiment.return_value = mock_experiment
+        mock_obj = MagicMock()
+        mock_content_type = "application/x-yaml"
+        mock_get_object_with_type.return_value = (mock_obj, mock_content_type)
+        mock_load_experiment_from_object.return_value = mock_experiment
         mock_run_experiment.return_value = self.mock_journal
-        mock_create_presigned_url.return_value = "https://s3.amazonaws.com/bucket/file.yml"
 
         event = {
             "local_mode": False,  # Explicitly set to False
             "experiment_source": "experiments/test.yml",
             "bucket_name": "test-bucket",
-            "output_config": {
-                "S3": {
-                    "bucket_name": "output-bucket",
-                    "path": "journals/",
-                },
-                "OPENSEARCH": {
-                    "index": "test-index",
-                    "host": "test-host",
-                },
-            },
+            "output_bucket": "output-bucket",
+            "output_path": "journals/",
+            "configuration": {"aws_region": "us-east-1"},
         }
 
         result = handler(event, MockContext())
 
         # Should call S3 functions
-        mock_get_object.assert_called_once()
-        mock_create_presigned_url.assert_called_once_with("test-bucket", "experiments/test.yml")
-        mock_load_experiment.assert_called_once_with("https://s3.amazonaws.com/bucket/file.yml")
+        mock_get_object_with_type.assert_called_once_with(
+            bucket_name="test-bucket",
+            key="experiments/test.yml",
+            configuration={"aws_region": "us-east-1"}
+        )
+        mock_load_experiment_from_object.assert_called_once_with(
+            obj=mock_obj,
+            content_type=mock_content_type
+        )
+        # Should upload to S3 output bucket
+        mock_put_object.assert_called_once()
 
-    @patch('handler.boto3')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
+    @patch('handler.put_object')
     @patch('handler.run_experiment')
     @patch('handler.load_experiment')
     @patch('handler.configure_logger')
@@ -272,7 +280,8 @@ method:
         mock_configure_logger,
         mock_load_experiment,
         mock_run_experiment,
-        mock_boto3
+        mock_put_object,
+        mock_get_task_info
     ):
         """Test that local_mode correctly handles failed experiments"""
         # Setup mocks
@@ -298,7 +307,9 @@ method:
         # Should update state to failed
         self.assertEqual(result["state"], "failed")
 
-    @patch('handler.boto3')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
+    @patch('handler.put_object')
     @patch('handler.run_experiment')
     @patch('handler.load_experiment')
     @patch('handler.configure_logger')
@@ -307,7 +318,8 @@ method:
         mock_configure_logger,
         mock_load_experiment,
         mock_run_experiment,
-        mock_boto3
+        mock_put_object,
+        mock_get_task_info
     ):
         """Test that local_mode correctly handles successful experiments"""
         # Setup mocks
@@ -334,18 +346,21 @@ method:
         response = json.loads(result["response"])
         self.assertEqual(response["status"], "completed")
 
-    @patch('handler.boto3')
+    @patch('handler.os.environ', {})
+    @patch('handler.get_task_info')
+    @patch('handler.put_object')
     @patch('handler.run_experiment')
     @patch('handler.load_experiment')
     @patch('handler.configure_logger')
-    def test_local_mode_with_output_config_ignored(
+    def test_local_mode_skips_s3_output_even_with_output_config(
         self,
         mock_configure_logger,
         mock_load_experiment,
         mock_run_experiment,
-        mock_boto3
+        mock_put_object,
+        mock_get_task_info
     ):
-        """Test that local_mode ignores output_config even if provided"""
+        """Test that local_mode skips S3 output even if output_bucket is provided"""
         # Setup mocks
         mock_experiment = {"title": "Test Experiment"}
         mock_load_experiment.return_value = mock_experiment
@@ -355,24 +370,18 @@ method:
             "local_mode": True,
             "experiment_source": self.test_experiment_path,
             "configuration": {"aws_region": "us-east-1"},
-            "output_config": {
-                "S3": {
-                    "bucket_name": "output-bucket",
-                    "path": "journals/",
-                },
-                "OPENSEARCH": {
-                    "index": "test-index",
-                    "host": "test-host",
-                },
-            },
+            "output_bucket": "output-bucket",
+            "output_path": "journals/",
         }
 
         result = handler(event, MockContext())
 
-        # Should still work and not upload to S3/OpenSearch
+        # Should still work and not upload to S3
         self.assertEqual(result["state"], "done")
-        # DynamoDB should not be called
-        mock_boto3.Session.assert_not_called()
+        # S3 upload should not be called
+        mock_put_object.assert_not_called()
+        # ECS metadata should not be called
+        mock_get_task_info.assert_not_called()
 
 
 if __name__ == '__main__':

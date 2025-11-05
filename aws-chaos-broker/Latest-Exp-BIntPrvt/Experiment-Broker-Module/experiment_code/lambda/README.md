@@ -1,6 +1,6 @@
 # Lambda Handler - Setup and Testing Guide
 
-This directory contains the AWS Lambda handler for running ChaosToolkit experiments, with support for local testing mode.
+This directory contains the AWS Lambda handler for running experiments, with support for local testing mode.
 
 ## Prerequisites
 
@@ -9,7 +9,27 @@ This directory contains the AWS Lambda handler for running ChaosToolkit experime
 
 ## Setup Instructions
 
-### 1. Create and Activate Virtual Environment
+### Quick Setup (Recommended)
+
+Use the provided `setup.sh` script for automated setup:
+
+```bash
+# Make sure the script is executable
+chmod +x setup.sh
+
+# Run the setup script
+./setup.sh
+```
+
+The script will:
+1. Create a virtual environment (if it doesn't exist)
+2. Install dependencies from `requirements.txt`
+3. Install local packages (`experiment_bofa`, `experiment_runner_lite`, `experiment_broker_logging`)
+4. Verify the installation
+
+### Manual Setup
+
+#### 1. Create and Activate Virtual Environment
 
 ```bash
 # From the lambda directory
@@ -23,53 +43,91 @@ source chaos-venv/bin/activate
 chaos-venv\Scripts\activate
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 
 ```bash
 # Install all required packages
 pip install -r requirements.txt
 ```
 
-### 3. Install Local experimentvr Package
+#### 3. Install Local Packages
 
-The handler depends on the local `experimentvr` package. You need to install it in development mode:
+The handler depends on three local packages. You need to install them in development mode:
 
+**run from experiment_root:**
 ```bash
-# From the experiment_code directory (parent of lambda)
-cd ..
-pip install -e .
+cd ./Experiment-Broker-Module/experiment_code/experiment_bofa
+pip install -e . --no-build-isolation
+
+cd ../../../experiment_runner_lite/
+pip install -e . --no-build-isolation
+
+cd ../Experiment-Broker-Logging-Module/
+pip install -e . --no-build-isolation
 ```
 
-This will install the `experimentvr` package in editable mode so changes to the package are immediately reflected.
-
-Alternatively, if you want to install from the experimentvr subdirectory:
-
+**experiment_bofa:**
 ```bash
-cd ../experimentvr
-pip install -e .
+# From the project root
+cd ../../Experiment-Broker-Module/experiment_code/experiment_bofa
+pip install -e . --no-build-isolation
 ```
 
-### 4. Verify Installation
+**experiment_runner_lite:**
+```bash
+# From the project root
+cd ../../experiment_runner_lite
+pip install -e . --no-build-isolation
+```
+
+**experiment_broker_logging:**
+```bash
+# From the project root
+cd ../../Experiment-Broker-Logging-Module
+pip install -e . --no-build-isolation
+```
+
+#### 4. Verify Installation
 
 ```bash
-python -c "import handler; print('Handler imported successfully')"
-python -c "import experimentvr; print('experimentvr imported successfully')"
+python -c "import handler; print('✓ handler imported successfully')"
+python -c "import experiment_bofa; print('✓ experiment_bofa imported successfully')"
+python -c "import experiment_runner_lite; print('✓ experiment_runner_lite imported successfully')"
+python -c "import experiment_broker_logging; print('✓ experiment_broker_logging imported successfully')"
+python -c "import boto3; print('✓ boto3 imported successfully')"
 ```
 
 ## Running Tests
 
 Once all dependencies are installed, you can run the tests:
 
+### Recommended: Use the test runner script
+
 ```bash
-# Run all tests
-python -m unittest test_handler_local_mode
+# Run all tests (automatically activates venv)
+./run_tests.sh
 
 # Run with verbose output
+./run_tests.sh -v
+
+# Run a specific test
+./run_tests.sh TestHandlerLocalMode.test_local_mode_loads_from_file_system
+```
+
+### Manual: Activate virtual environment first
+
+```bash
+# IMPORTANT: Activate the virtual environment first!
+source chaos-venv/bin/activate
+
+# Then run tests
 python -m unittest test_handler_local_mode -v
 
 # Run a specific test
 python -m unittest test_handler_local_mode.TestHandlerLocalMode.test_local_mode_loads_from_file_system
 ```
+
+**Note:** Make sure the virtual environment is activated before running tests, otherwise you'll get `ModuleNotFoundError` for the local packages.
 
 ## Running Locally
 
@@ -91,40 +149,69 @@ source chaos-venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### ImportError: No module named 'experimentvr'
+### ModuleNotFoundError: No module named 'experiment_bofa'
 
-The local `experimentvr` package needs to be installed:
+The local `experiment_bofa` package needs to be installed:
 ```bash
-cd ../experimentvr
-pip install -e .
+# From the project root
+cd ../../Experiment-Broker-Module/experiment_code/experiment_bofa
+pip install -e . --no-build-isolation
 ```
 
-Or from the experiment_code directory:
+### ModuleNotFoundError: No module named 'experiment_runner_lite'
+
+The local `experiment_runner_lite` package needs to be installed:
 ```bash
-cd ..
-pip install -e .
+# From the project root
+cd ../../experiment_runner_lite
+pip install -e . --no-build-isolation
+```
+
+### ModuleNotFoundError: No module named 'experiment_broker_logging'
+
+The local `experiment_broker_logging` package needs to be installed:
+```bash
+# From the project root
+cd ../../Experiment-Broker-Logging-Module
+pip install -e . --no-build-isolation
 ```
 
 ### ImportError: Failed to import test module
 
 This usually means:
 1. Dependencies are not installed - run `pip install -r requirements.txt`
-2. experimentvr package is not installed - install it with `pip install -e .` from the experimentvr or experiment_code directory
+2. Local packages are not installed - run `./setup.sh` or install them manually as shown above
 3. Virtual environment is not activated - make sure to activate it first
+
+### pip install -e . fails with "No module named pip"
+
+This means your virtual environment is broken. Recreate it:
+```bash
+deactivate  # if activated
+rm -rf chaos-venv
+python3 -m venv chaos-venv
+source chaos-venv/bin/activate
+pip install --upgrade pip setuptools wheel
+```
 
 ## Requirements Overview
 
 The `requirements.txt` includes:
 - **boto3** - AWS SDK for Python
-- **chaostoolkit** - Chaos engineering toolkit
-- **chaostoolkit-aws** - AWS extension for ChaosToolkit
-- **chaostoolkit-kubernetes** - Kubernetes extension for ChaosToolkit
-- **logzero** - Logging library
-- **opensearch-py** - OpenSearch client
+- **requests** - HTTP library for API calls
 - **pytest** and related packages - For testing
+
+## Local Packages
+
+The handler depends on three local packages that must be installed separately:
+- **experiment_bofa** - S3 and AWS utilities (from `experiment_code/experiment_bofa`)
+- **experiment_runner_lite** - Experiment runner framework (from `experiment_runner_lite`)
+- **experiment_broker_logging** - Logging utilities (from `Experiment-Broker-Logging-Module`)
+
+These packages are not on PyPI and must be installed in development mode using `pip install -e .` from their respective directories.
 
 ## Notes
 
-- The `experimentvr` package is a local module and must be installed separately
+- The local packages must be installed in development mode (`-e` flag) so code changes are reflected immediately
 - Tests use mocking, so no actual AWS credentials or services are needed
-- Make sure to install the experimentvr package in development mode (`-e` flag) so code changes are reflected immediately
+- The `setup.sh` script handles all installation steps automatically

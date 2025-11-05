@@ -1,7 +1,6 @@
 from handler import handler
 from dataclasses import dataclass
 import os
-import sys
 
 
 @dataclass
@@ -16,8 +15,8 @@ class context:
 event_dict = {
     "local_mode": True,  # Enable local mode
     "experiment_source": "../../../cdk/lambda_infra/experiments/tc-010-1.yml",  # Path to local experiment
-    # Note: In local mode, you don't need bucket_name or output_config
-    # unless you want to test S3/OpenSearch uploads explicitly
+    # Note: In local mode, you don't need bucket_name, output_bucket, or output_path
+    # unless you want to test those explicitly
     "configuration": {
         "aws_region": "us-east-1",
     },

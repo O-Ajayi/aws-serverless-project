@@ -39,29 +39,90 @@ echo ""
 echo "Installing dependencies from requirements.txt..."
 pip install -r requirements.txt
 
-# Install local experimentvr package
+# Install local packages
 echo ""
-echo "Installing local experimentvr package..."
-cd ..
-if [ -f "setup.py" ]; then
-    # Use pip install -e . instead of python setup.py develop (modern approach)
-    pip install -e . --no-build-isolation
-    echo "experimentvr package installed."
+echo "Installing local packages..."
+
+# Get the project root directory (two levels up from lambda)
+PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+
+# Install experiment_bofa
+if [ -d "$PROJECT_ROOT/Experiment-Broker-Module/experiment_code/experiment_bofa" ]; then
+    echo "Installing experiment_bofa..."
+    cd "$PROJECT_ROOT/Experiment-Broker-Module/experiment_code/experiment_bofa"
+    if [ ! -f "setup.py" ]; then
+        echo "  Creating minimal setup.py for experiment_bofa..."
+        cat > setup.py << 'SETUP_EOF'
+from setuptools import setup, find_packages
+setup(
+    name="experiment_bofa",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[]
+)
+SETUP_EOF
+    fi
+    pip install -e . --no-build-isolation 2>/dev/null || pip install -e . || echo "⚠ Warning: experiment_bofa installation failed"
 else
-    echo "Warning: setup.py not found in parent directory."
-    echo "Please ensure you're in the correct directory structure."
+    echo "⚠ Warning: experiment_bofa directory not found"
+fi
+
+# Install experiment_runner_lite
+if [ -d "$PROJECT_ROOT/experiment_runner_lite" ]; then
+    echo "Installing experiment_runner_lite..."
+    cd "$PROJECT_ROOT/experiment_runner_lite"
+    if [ ! -f "setup.py" ]; then
+        echo "  Creating minimal setup.py for experiment_runner_lite..."
+        cat > setup.py << 'SETUP_EOF'
+from setuptools import setup, find_packages
+setup(
+    name="experiment_runner_lite",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=["boto3"]
+)
+SETUP_EOF
+    fi
+    pip install -e . --no-build-isolation 2>/dev/null || pip install -e . || echo "⚠ Warning: experiment_runner_lite installation failed"
+else
+    echo "⚠ Warning: experiment_runner_lite directory not found"
+fi
+
+# Install experiment_broker_logging
+if [ -d "$PROJECT_ROOT/Experiment-Broker-Logging-Module" ]; then
+    echo "Installing experiment_broker_logging..."
+    cd "$PROJECT_ROOT/Experiment-Broker-Logging-Module"
+    if [ ! -f "setup.py" ]; then
+        echo "  Creating minimal setup.py for experiment_broker_logging..."
+        cat > setup.py << 'SETUP_EOF'
+from setuptools import setup, find_packages
+setup(
+    name="experiment_broker_logging",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[]
+)
+SETUP_EOF
+    fi
+    pip install -e . --no-build-isolation 2>/dev/null || pip install -e . || echo "⚠ Warning: experiment_broker_logging installation failed"
+else
+    echo "⚠ Warning: Experiment-Broker-Logging-Module directory not found"
 fi
 
 # Go back to lambda directory
-cd lambda
+cd "$(dirname "$0")"
+
+# Set PYTHONPATH for verification (helps with editable installs)
+export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
 # Verify installation
 echo ""
 echo "Verifying installation..."
 python -c "import handler; print('✓ handler imported successfully')" || echo "✗ Failed to import handler"
-python -c "import experimentvr; print('✓ experimentvr imported successfully')" || echo "✗ Failed to import experimentvr"
+python -c "import experiment_bofa; print('✓ experiment_bofa imported successfully')" || echo "✗ Failed to import experiment_bofa"
+PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH" python -c "import experiment_runner_lite; print('✓ experiment_runner_lite imported successfully')" || echo "✗ Failed to import experiment_runner_lite (may need PYTHONPATH)"
+python -c "import experiment_broker_logging; print('✓ experiment_broker_logging imported successfully')" || echo "✗ Failed to import experiment_broker_logging"
 python -c "import boto3; print('✓ boto3 imported successfully')" || echo "✗ Failed to import boto3"
-python -c "import chaostoolkit; print('✓ chaostoolkit imported successfully')" || echo "✗ Failed to import chaostoolkit"
 
 echo ""
 echo "========================================="
