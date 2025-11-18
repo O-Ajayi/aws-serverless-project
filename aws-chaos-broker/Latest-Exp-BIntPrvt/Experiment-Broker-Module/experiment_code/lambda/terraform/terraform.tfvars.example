@@ -1,0 +1,19 @@
+# Example terraform.tfvars file
+# Copy this file to terraform.tfvars and update with your values
+
+aws_region = "us-east-1"
+environment = "dev"
+function_name = "chaos-broker-handler"
+s3_bucket_name = "experiment-bucket-111222333"
+
+# Lambda Configuration
+runtime = "python3.9"
+timeout = 900  # 15 minutes
+memory_size = 512  # MB
+
+# Additional Tags
+tags = {
+  Team = "ChaosEngineering"
+  Purpose = "ChaosTesting"
+}
+

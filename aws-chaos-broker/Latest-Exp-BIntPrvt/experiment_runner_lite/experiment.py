@@ -10,7 +10,7 @@ from pprint import pformat
 import traceback
 import unittest
 import urllib.parse
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from experiment_runner_lite.exceptions import InvalidActivity, InvalidExperiment, InvalidSource
 from experiment_runner_lite.logging import logger
 from experiment_runner_lite.exceptions import InvalidExperiment
@@ -219,11 +219,22 @@ def load_experiment_from_object(obj, content_type: str):
                 raise InvalidSource(f"Failed parsing plaintext experiment: {str(e)}")
 
 def run_experiment(experiment: dict):
-    status = None
-    deviated = None
-    steady_states = {}
-    rollbacks = []
-    experiment_start_time = None
+    """Execute a chaos experiment and return the resulting journal."""
+
+    status: Optional[str] = None
+    deviated: Optional[bool] = None
+    steady_states: Dict[str, Dict[str, Any]] = {}
+    rollbacks: list = []
+    experiment_start_time: Optional[datetime.datetime] = None
+
+    # Always initialise an experiment journal so the exception path can safely
+    # enrich it without raising UnboundLocalError when early failures occur
+    # (e.g. during validation).
+    experiment_journal: dict = {
+        "experiment": experiment or {},
+        "run": [],
+        "rollbacks": [],
+    }
 
     try:
         validate_experiment(experiment)
@@ -232,13 +243,14 @@ def run_experiment(experiment: dict):
         deviated = False
 
         logging.info("Start experiment journal")
-        experiment_journal = {
-            "chaoslib-version": "NA",
-            "platform": "Linux-5.10.201-213.748.amzn2.x86_64-x86_64-with-glibc2.26",
-            "node": "169.254.68.133",
-            "experiment": experiment,
-            "start": experiment_start_time.isoformat(),
-        }
+        experiment_journal.update(
+            {
+                "chaoslib-version": "NA",
+                "platform": "Linux-5.10.201-213.748.amzn2.x86_64-x86_64-with-glibc2.26",
+                "node": "169.254.68.133",
+                "start": experiment_start_time.isoformat(),
+            }
+        )
 
         # Check Pre Execution Steady State Hypothesis
         logger.info("Check Pre Execution Steady State Hypothesis")
@@ -268,12 +280,12 @@ def run_experiment(experiment: dict):
             )
             steady_states["during"] = []
 
-            if steady_states["after"]["steady_state_met"] == False:
+            if not steady_states["after"].get("steady_state_met", False):
                 deviated = True
+                status = "failed"
 
             else:
-                logging.info("Status is")
-                status = "failed"
+                logging.info("Post steady state hypothesis satisfied")
 
             try:
                 if experiment["rollbacks"]:
@@ -292,8 +304,10 @@ def run_experiment(experiment: dict):
             experiment_journal["rollbacks"] = []
             experiment_journal["end"] = experiment_end_time.isoformat()
             experiment_journal["duration"] = (
-            experiment_end_time - experiment_start_time
-            ).total_seconds()
+            (experiment_end_time - experiment_start_time).total_seconds()
+            if experiment_start_time is not None
+            else 0
+        )
 
         # print(experiment_journal)
 
@@ -306,13 +320,16 @@ def run_experiment(experiment: dict):
         status = "aborted"
         experiment_end_time = datetime.datetime.now()
 
+        experiment_journal.setdefault("steady_states", steady_states)
+        experiment_journal.setdefault("rollbacks", [])
+        experiment_journal.setdefault("run", [])
         experiment_journal["status"] = status
-        experiment_journal["deviated"] = deviated
-        experiment_journal["steady_states"] = steady_states
-        experiment_journal["rollbacks"] = []
+        experiment_journal["deviated"] = deviated if deviated is not None else True
         experiment_journal["end"] = experiment_end_time.isoformat()
         experiment_journal["duration"] = (
-        experiment_end_time - experiment_start_time
-        ).total_seconds() if experiment_start_time != None else 0
+            (experiment_end_time - experiment_start_time).total_seconds()
+            if experiment_start_time is not None
+            else 0
+        )
 
         return experiment_journal

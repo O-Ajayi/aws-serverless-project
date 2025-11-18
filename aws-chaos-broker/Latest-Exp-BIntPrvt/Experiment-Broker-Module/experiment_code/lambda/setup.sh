@@ -5,6 +5,8 @@
 set -e  # Exit on error
 set +H  # Disable history expansion to avoid ! errors
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
 echo "========================================="
 echo "Lambda Handler Setup Script"
 echo "========================================="
@@ -43,13 +45,13 @@ pip install -r requirements.txt
 echo ""
 echo "Installing local packages..."
 
-# Get the project root directory (two levels up from lambda)
-PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+CODE_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 
 # Install experiment_bofa
-if [ -d "$PROJECT_ROOT/Experiment-Broker-Module/experiment_code/experiment_bofa" ]; then
+if [ -d "$CODE_ROOT/experiment_bofa" ]; then
     echo "Installing experiment_bofa..."
-    cd "$PROJECT_ROOT/Experiment-Broker-Module/experiment_code/experiment_bofa"
+    cd "$CODE_ROOT/experiment_bofa"
     if [ ! -f "setup.py" ]; then
         echo "  Creating minimal setup.py for experiment_bofa..."
         cat > setup.py << 'SETUP_EOF'
@@ -110,7 +112,7 @@ else
 fi
 
 # Go back to lambda directory
-cd "$(dirname "$0")"
+cd "$SCRIPT_DIR"
 
 # Set PYTHONPATH for verification (helps with editable installs)
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"

@@ -1,0 +1,17 @@
+{
+  "local_mode": true,
+  "execution_provider": "openshift",
+  "experiment_source": "../../../terraform/eks_infra/experiments/pod-chaos-termination.yml",
+  "on_prem_target": {
+    "provider": "openshift",
+    "cluster_name": "ocp-dev",
+    "namespace": "chaos-testing",
+    "api_server": "https://api.ocp-dev.example.com:6443"
+  },
+  "configuration": {
+    "cluster_name": "ocp-dev",
+    "namespace": "chaos-testing",
+    "pod_label_selector": "app=nginx"
+  }
+}
+

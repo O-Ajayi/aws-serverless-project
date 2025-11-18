@@ -1,0 +1,10 @@
+{
+  "local_mode": true,
+  "experiment_source": "local_only/experiments/experiment.yaml",
+  "configuration": {
+    "cluster_name": "local-kube",
+    "namespace": "chaos-testing",
+    "pod_label_selector": "app=demo"
+  }
+}
+

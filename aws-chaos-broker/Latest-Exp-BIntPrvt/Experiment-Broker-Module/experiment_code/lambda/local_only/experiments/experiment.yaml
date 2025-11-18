@@ -1,0 +1,38 @@
+version: 1.0.0
+title: Local Filesystem Sample Experiment
+description: |
+  Local-only sample experiment used for testing `local_mode=true`.
+  This experiment simulates a pod health check on a local or desktop cluster.
+
+configuration:
+  cluster_name: local-kube
+  namespace: chaos-testing
+  pod_label_selector: app=demo
+
+steady-state-hypothesis:
+  title: Pod responds to HTTP probe
+  probes:
+    - type: probe
+      name: pod-http-check
+      tolerance: true
+      provider:
+        type: python
+        module: experiment_bofa.k8s.probes
+        func: pod_is_ready
+        arguments:
+          namespace: ${namespace}
+          label_selector: ${pod_label_selector}
+
+method:
+  - type: action
+    name: print-local-message
+    provider:
+      type: python
+      module: experiment_bofa.load.actions
+      func: http_stress
+      arguments:
+        message: "This is a placeholder action for local testing."
+        duration: 5
+
+rollbacks: []
+

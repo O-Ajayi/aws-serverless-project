@@ -1,0 +1,17 @@
+{
+  "local_mode": "openshift",
+  "experiment_source": "experiments/pod-chaos-termination.yml",
+  "openshift_storage_path": "/mnt/openshift/chaos-files",
+  "on_prem_target": {
+    "provider": "openshift",
+    "cluster_name": "ocp-dev",
+    "namespace": "chaos-testing",
+    "api_server": "https://api.ocp-dev.example.com:6443"
+  },
+  "configuration": {
+    "cluster_name": "ocp-dev",
+    "namespace": "chaos-testing",
+    "pod_label_selector": "app=nginx"
+  }
+}
+

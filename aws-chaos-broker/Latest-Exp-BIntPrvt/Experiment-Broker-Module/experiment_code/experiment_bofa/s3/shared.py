@@ -9,10 +9,10 @@ from experiment_runner_lite.types import Configuration, AWSResponse
 from experiment_runner_lite.exceptions import InvalidActivity
 from logzero import logger
 
-# Alias for backwards compatibility
+# Backwards compatibility: treat InvalidActivity the same as the ChaosToolkit FailedActivity
 FailedActivity = InvalidActivity
 
-__all__ = ["get_object", "get_configuration_state"]
+__all__ = ["get_object", "get_object_with_type", "get_configuration_state"]
 
 my_config = Config(
     signature_version="s3v4", retries={"max_attempts": 10, "mode": "standard"}
@@ -52,45 +52,47 @@ def create_presigned_url(bucket_name, object_name, expiration=3600):
     # The response contains the presigned URL
     return response
 
-def get_object_with_type(
-    bucket_name: str, key: str, configuration: Configuration, region="us-west-2"
-):
-    """Returns an S3 object from the specified bucket
 
-    :param bucket_name: An S3 bucket
-    :param key: Key of object to retrieve
-    :returns: boto3 s3.Object
-    """
-    logger.info("get_object_from_boto3")
-    logger.info(f"bucket_name: {bucket_name} key: {key}")
+def get_object_with_type(
+    bucket_name: str, key: str, configuration: Configuration, region: str = "us-east-1"
+):
+    """Retrieve an S3 object and return its raw body plus content type."""
 
     if not bucket_name or not key:
         raise FailedActivity(
-            "To load an object from an S3 bucket you must specify the"
-            f" bucket_name and key."
+            "To load an object from an S3 bucket you must specify the "
+            "bucket_name and key."
         )
 
     if not configuration:
         region = os.environ.get(
-            "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-west-2")
+            "AWS_REGION",
+            os.environ.get("AWS_DEFAULT_REGION", region),
         )
         configuration = {"aws_region": region}
 
+    logger.info("Fetching object '%s' from bucket '%s'", key, bucket_name)
     client = boto3.client("s3", config=my_config)
-    response = client.get_object(
-        Bucket=bucket_name,
-        Key=key
-    )
+    response = client.get_object(Bucket=bucket_name, Key=key)
 
-    obj = response["Body"].read().decode("UTF-8")
-    content_type = response["ContentType"]
-
-    if not obj or not content_type:
+    body = response.get("Body")
+    if not body:
         raise FailedActivity(
             f"Unable to load S3 object arn:aws:s3:::{bucket_name}/{key}"
         )
 
-    return obj, content_type
+    payload = body.read()
+    if isinstance(payload, bytes):
+        try:
+            payload_decoded = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            payload_decoded = payload
+    else:
+        payload_decoded = payload
+
+    content_type = response.get("ContentType") or "text/plain"
+    return payload_decoded, content_type
+
 
 def get_object(
     bucket_name: str, filename: str, configuration: Configuration, region="us-east-1"

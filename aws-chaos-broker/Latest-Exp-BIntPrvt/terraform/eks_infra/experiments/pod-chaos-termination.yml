@@ -1,0 +1,67 @@
+version: 1.0.0
+title: Pod Termination Chaos Experiment
+description: |
+  This experiment tests the resilience of a pod by terminating it
+  and verifying that the application recovers gracefully.
+  This is a sample experiment for chaos testing on EKS pods.
+
+configuration:
+  aws_region: us-east-1
+  cluster_name: chaos
+  namespace: default
+  pod_label_selector: "app=nginx"
+  timeout: 30
+
+steady-state-hypothesis:
+  title: Pod is healthy and running
+  probes:
+    - type: probe
+      name: pod-exists
+      tolerance: true
+      provider:
+        type: python
+        module: experiment_bofa.k8s.probes
+        func: pod_exists
+        arguments:
+          name: "${pod_name}"
+          namespace: "${configuration.namespace}"
+          label_selector: "${configuration.pod_label_selector}"
+
+    - type: probe
+      name: pod-is-ready
+      tolerance: true
+      provider:
+        type: python
+        module: experiment_bofa.k8s.probes
+        func: pod_is_ready
+        arguments:
+          name: "${pod_name}"
+          namespace: "${configuration.namespace}"
+
+method:
+  - type: action
+    name: terminate-pod
+    provider:
+      type: python
+      module: experiment_bofa.k8s.actions
+      func: delete_pod
+      arguments:
+        name: "${pod_name}"
+        namespace: "${configuration.namespace}"
+        label_selector: "${configuration.pod_label_selector}"
+        grace_period_seconds: 30
+
+  - type: probe
+    name: wait-for-pod-recreation
+    tolerance: 300
+    provider:
+      type: python
+      module: experiment_bofa.k8s.probes
+      func: pod_is_ready
+      arguments:
+        name: "${pod_name}"
+        namespace: "${configuration.namespace}"
+        label_selector: "${configuration.pod_label_selector}"
+
+rollbacks: []
+

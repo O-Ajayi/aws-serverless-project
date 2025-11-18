@@ -1,0 +1,9 @@
+{
+  "local_mode": true,
+  "experiment_source": "../../../terraform/eks_infra/experiments/pod-chaos-termination.yml",
+  "configuration": {
+    "aws_region": "us-east-1",
+    "cluster_name": "chaos-broker-eks"
+  }
+}
+

@@ -1,0 +1,14 @@
+{
+  "local_mode": false,
+  "bucket_name": "experiment-bucket-111222333",
+  "experiment_source": "experiments/pod-chaos-termination.yml",
+  "output_bucket": "experiment-bucket-111222333",
+  "output_path": "results/",
+  "configuration": {
+    "aws_region": "us-east-1",
+    "cluster_name": "chaos-broker-eks",
+    "namespace": "default",
+    "pod_label_selector": "app=nginx"
+  }
+}
+

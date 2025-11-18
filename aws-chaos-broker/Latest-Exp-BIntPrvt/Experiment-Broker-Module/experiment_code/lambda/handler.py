@@ -63,44 +63,141 @@ def get_task_logs_arn(task_metadata, account_id: str):
     return f"{log_group}:{log_stream}"
 
 def handler(event, context):
-    """Runs an experiment by experiment_source". 
-    
-    Provide the following event data to invoke the function: 
-    { 
-        "experiment_source": "authorizations/tc001.yml", 
-        "bucket_name": "chaos-testing-bucket", 
-        ...(additional values for running experiment: AZ, Region, Environment, etc.) 
-    } 
-    
-    For local testing:
+    """Runs an experiment specified by `experiment_source`.
+
+    ### AWS (default) invocation example (`local_mode=false`)
+
+    ```json
     {
-        "local_mode": true,
-        "experiment_source": "/path/to/experiment.yml",  # or relative path
-        ...(additional values for running experiment: AZ, Region, Environment, etc.)
+      "local_mode": false,
+      "experiment_source": "experiments/pod-chaos-termination.yml",
+      "bucket_name": "experiment-bucket-111222333",
+      "output_bucket": "experiment-bucket-111222333",
+      "output_path": "results/",
+      "configuration": {
+        "aws_region": "us-east-1",
+        "cluster_name": "chaos-broker-eks",
+        "namespace": "default",
+        "pod_label_selector": "app=nginx"
+      }
     }
+    ```
+
+    ### Local filesystem invocation example (`local_mode=true`)
+
+    ```json
+    {
+      "local_mode": true,
+      "experiment_source": "/Users/you/projects/chaos/local_only/experiments/experiment.yaml",
+      "configuration": {
+        "cluster_name": "k3s-local",
+        "namespace": "chaos-testing",
+        "pod_label_selector": "app=nginx"
+      }
+    }
+    ```
+
+    ### OpenShift/on-prem invocation example (`local_mode="openshift"`)
+
+    ```json
+    {
+      "local_mode": "openshift",
+      "experiment_source": "experiments/pod-chaos-termination.yml",
+      "openshift_storage_path": "/mnt/openshift/chaos-files",
+      "on_prem_target": {
+        "provider": "openshift",
+        "cluster_name": "ocp-dev",
+        "namespace": "chaos-testing",
+        "api_server": "https://api.ocp-dev.example.com:6443"
+      },
+      "configuration": {
+        "cluster_name": "ocp-dev",
+        "namespace": "chaos-testing",
+        "pod_label_selector": "app=nginx"
+      }
+    }
+    ```
     """
     log_capture, report_capture = _capture_experiment_logs()
 
     experiment_source = event.get("experiment_source")
     experiment_state = event.get("state")
     output_config = event.get("output_config")
-    local_mode = event.get("local_mode", False)
+
+    mode_raw = event.get("local_mode", False)
+    if isinstance(mode_raw, bool):
+        mode_value = "true" if mode_raw else "false"
+    else:
+        mode_value = str(mode_raw).strip().lower()
+
+    if mode_value in {"false", "0", "no"}:
+        execution_mode = "aws"
+    elif mode_value in {"openshift", "ocp", "onprem", "on-prem"}:
+        execution_mode = "openshift"
+    elif mode_value in {"true", "1", "yes", "local"}:
+        execution_mode = "local"
+    else:
+        execution_mode = "local" if mode_value not in {"", "none", "null"} else "aws"
+
+    event["local_mode_label"] = execution_mode
+    event["local_mode"] = execution_mode != "aws"
 
     if experiment_source:
         logger.info("VS Runner Lite attempting to load experiment: %s", experiment_source)
 
-    # Load experiment from local file or S3
-    if local_mode:
-        # Local mode: load from file system
+    if execution_mode == "local":
+        execution_provider = event.get("execution_provider", "local-filesystem")
+        logger.info("Local filesystem mode enabled - provider=%s", execution_provider)
+
         if not os.path.isabs(experiment_source):
-            # If relative path, try to resolve from current directory
             experiment_source = os.path.abspath(experiment_source)
-        
+
         if not os.path.exists(experiment_source):
             raise FileNotFoundError(f"Experiment file not found: {experiment_source}")
-        
+
         logger.info("Loading experiment from local file: %s", experiment_source)
         experiment = load_experiment(experiment_source)
+        event.update(
+            {
+                "execution_mode": "local",
+                "execution_provider": execution_provider,
+                "skip_aws_services": True,
+            }
+        )
+    elif execution_mode == "openshift":
+        execution_provider = "openshift"
+        storage_base = event.get("openshift_storage_path") or os.environ.get(
+            "OPENSHIFT_STORAGE_PATH"
+        )
+        on_prem_target = event.get("on_prem_target", {})
+
+        logger.info(
+            "OpenShift mode enabled - storage_base=%s target=%s",
+            storage_base or "(not provided)",
+            on_prem_target or "not specified",
+        )
+
+        if storage_base and not os.path.isabs(experiment_source):
+            experiment_source = os.path.join(storage_base, experiment_source)
+
+        experiment_source = os.path.abspath(experiment_source)
+
+        if not os.path.exists(experiment_source):
+            raise FileNotFoundError(
+                f"Experiment file not found for OpenShift mode: {experiment_source}"
+            )
+
+        logger.info("Loading experiment from OpenShift storage: %s", experiment_source)
+        experiment = load_experiment(experiment_source)
+        event.update(
+            {
+                "execution_mode": "openshift",
+                "execution_provider": execution_provider,
+                "on_prem_target": on_prem_target,
+                "openshift_storage_path": storage_base,
+                "skip_aws_services": True,
+            }
+        )
     else:
         # AWS Lambda/ECS mode: load from S3
         try:
@@ -114,17 +211,22 @@ def handler(event, context):
             raise
 
         experiment = load_experiment_from_object(obj=obj, content_type=content_type)
+        event.update(
+            {
+                "execution_mode": "aws",
+                "execution_provider": "aws",
+                "skip_aws_services": False,
+            }
+        )
 
     experiment_journal = run_experiment(experiment)
-    if (
-        experiment_journal.get("status") in ["completed", "success"]
-    ):
+    if experiment_journal.get("status") in ["completed", "success"]:
         event.update({"state": "done"})
     else:
         event.update({"state": "failed"})
 
     # Only process ECS metadata and replacements if not in local mode
-    if not local_mode:
+    if execution_mode == "aws":
         region = os.getenv("AWS_REGION", "unknown")
         account_id = os.getenv("account_id", "unknown")
         
@@ -149,8 +251,8 @@ def handler(event, context):
         else:
             logger.info("Not running in ECS, skipping task metadata retrieval")
 
-    # Only upload to S3 if not in local mode and output config is provided
-    if not local_mode and event.get("output_bucket") and event.get("output_path"):
+    # Only upload to S3 if running in AWS mode and output config is provided
+    if execution_mode == "aws" and event.get("output_bucket") and event.get("output_path"):
         try:
             output_path = event["output_path"] + ("/" if event["output_path"].find("/") == -1 else "")
             experiment_name = "".join(experiment_source.split("/")[-1].split(".")[:-1])
@@ -168,8 +270,8 @@ def handler(event, context):
         except Exception:
             exc_str = traceback.format_exc()
             logger.error(f"Unable to upload experiment journal to S3: {exc_str}")
-    elif local_mode:
-        logger.info("Local mode: Skipping S3 output upload")
+    elif execution_mode in {"local", "openshift"}:
+        logger.info("Non-AWS mode: Skipping S3 output upload")
 
     event.update({"response": json.dumps(experiment_journal)})
     event.update({"report_capture": str(report_capture.getvalue())})
@@ -200,7 +302,54 @@ if __name__ == "__main__":
     params = json.loads(secret_response['secretstring'])
 
     variables = ["bucket_name", "experiment_source", "output_bucket", "output_path"]
-    event = {v:os.environ[v] for v in variables}
+    event = {}
+    for var in variables:
+        val = os.environ.get(var)
+        if val is not None:
+            event[var] = val
+
+    local_mode_env = os.environ.get("local_mode", "false")
+    local_mode_label = (
+        local_mode_env.lower()
+        if isinstance(local_mode_env, str)
+        else ("true" if local_mode_env else "false")
+    )
+
+    if local_mode_label in {"true", "1", "yes", "local"}:
+        event["local_mode"] = True
+        event["execution_mode"] = "local"
+        event["execution_provider"] = os.environ.get("execution_provider", "local-filesystem")
+        event["skip_aws_services"] = True
+        logger.info("Local filesystem mode enabled via __main__ block")
+    elif local_mode_label in {"openshift", "ocp", "onprem", "on-prem"}:
+        event["local_mode"] = "openshift"
+        event["execution_mode"] = "openshift"
+        event["execution_provider"] = "openshift"
+        event["skip_aws_services"] = True
+        event["openshift_storage_path"] = os.environ.get("openshift_storage_path") or os.environ.get("OPENSHIFT_STORAGE_PATH")
+        on_prem_target = {
+            "provider": "openshift",
+            "cluster_name": os.environ.get("openshift_cluster_name"),
+            "namespace": os.environ.get("openshift_namespace"),
+            "api_server": os.environ.get("openshift_api_server"),
+            "token": os.environ.get("openshift_token"),
+        }
+        event["on_prem_target"] = {k: v for k, v in on_prem_target.items() if v}
+        logger.info(
+            "OpenShift mode enabled via __main__ block - storage_base=%s target=%s",
+            event.get("openshift_storage_path"),
+            event.get("on_prem_target", {}),
+        )
+    else:
+        missing = [var for var in variables if var not in event]
+        if missing:
+            raise KeyError(f"Missing required environment variables for AWS execution: {missing}")
+        event["local_mode"] = False
+        event["execution_mode"] = "aws"
+        event["execution_provider"] = "aws"
+        event["skip_aws_services"] = False
+        logger.info("AWS mode enabled - execution_mode set to 'aws'")
+    
     print(event)
 
     print("HANDLER START")

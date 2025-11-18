@@ -1,0 +1,63 @@
+# Example configuration for the chaos experiment Step Function
+
+aws_region         = "us-east-1"
+environment        = "dev"
+state_machine_name = "chaos-experiment-runner"
+
+# ARN of the deployed Lambda handler (update with your account details)
+lambda_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:chaos-broker-handler"
+
+payload_template = {
+  Payload = {
+    list = [
+      {
+        experiment_source = "Demo-Kubernetes(EKS)-Worker Node (Pod)-State-TerminationCrash.yml"
+        bucket_name       = "resiliencyvr-package-build-bucket-demo"
+        output_config = {
+          S3 = {
+            bucket_name = "resiliencyvr-package-build-bucket-demo"
+            path        = "experiment_journals"
+          }
+          OPENSEARCH = {
+            index = "resiliency-experiment-journals"
+            host  = "search-resiliency-health-index-5kbdxdwunwcdt7u4ti4musfw34.us-east-1.es.amazonaws.com"
+          }
+        }
+      },
+      {
+        experiment_source = "Demo-Kubernetes(EKS)-Worker Node (EC2)-Network-PacketLoss.yml"
+        bucket_name       = "resiliencyvr-package-build-bucket-demo"
+        output_config = {
+          S3 = {
+            bucket_name = "resiliencyvr-package-build-bucket-demo"
+            path        = "experiment_journals"
+          }
+          OPENSEARCH = {
+            index = "resiliency-experiment-journals"
+            host  = "search-resiliency-health-index-5kbdxdwunwcdt7u4ti4musfw34.us-east-1.es.amazonaws.com"
+          }
+        }
+      },
+      {
+        experiment_source = "Demo-Kubernetes(EKS)-Worker Node (EC2)-Network-Latency.yml"
+        bucket_name       = "resiliencyvr-package-build-bucket-demo"
+        output_config = {
+          S3 = {
+            bucket_name = "resiliencyvr-package-build-bucket-demo"
+            path        = "experiment_journals"
+          }
+          OPENSEARCH = {
+            index = "resiliency-experiment-journals"
+            host  = "search-resiliency-health-index-5kbdxdwunwcdt7u4ti4musfw34.us-east-1.es.amazonaws.com"
+          }
+        }
+      }
+    ]
+    state = "pending"
+  }
+}
+
+tags = {
+  Owner = "ResiliencyTeam"
+}
+

@@ -129,6 +129,83 @@ python -m unittest test_handler_local_mode.TestHandlerLocalMode.test_local_mode_
 
 **Note:** Make sure the virtual environment is activated before running tests, otherwise you'll get `ModuleNotFoundError` for the local packages.
 
+## Running the Handler in Different Modes
+
+The handler supports two execution paths:
+
+| Mode        | `local_mode` | Provider        | Experiment Source         | AWS Services |
+|-------------|--------------|-----------------|---------------------------|--------------|
+| AWS         | `false`      | `aws`           | S3 object (`bucket/key`)  | Enabled      |
+| Local/On-Prem (OpenShift) | `true`       | `openshift` (default) | Local file path            | Skipped      |
+
+### AWS Mode (`local_mode = false`)
+
+1. **Upload your experiment to S3**
+   ```bash
+   aws s3 cp ../../../terraform/eks_infra/experiments/pod-chaos-termination.yml \
+       s3://experiment-bucket-111222333/experiments/pod-chaos-termination.yml
+   ```
+
+2. **Update `terraform/test_payload_aws.json`** if needed, then invoke either via the Lambda console or:
+   ```bash
+   aws lambda invoke \
+     --function-name chaos-broker-handler \
+     --payload file://terraform/test_payload_aws.json \
+     response.json
+   cat response.json | jq .
+   ```
+
+3. **Expected event (excerpt)**:
+   ```json
+   {
+     "local_mode": false,
+     "bucket_name": "experiment-bucket-111222333",
+     "experiment_source": "experiments/pod-chaos-termination.yml",
+     "output_bucket": "experiment-bucket-111222333",
+     "output_path": "results/"
+   }
+   ```
+
+### Local / OpenShift Mode (`local_mode = true`)
+
+1. **Deploy sample workload (optional)**
+   ```bash
+   cd ../../../terraform/eks_infra/kubernetes_manifests
+   kubectl apply -f nginx-deployment.yaml
+   ```
+
+2. **Set environment variables and run the handler**
+   ```bash
+   cd ../../Experiment-Broker-Module/experiment_code/lambda
+   source chaos-venv/bin/activate
+
+   export local_mode=true
+   export experiment_source=$(pwd)/../../../terraform/eks_infra/experiments/pod-chaos-termination.yml
+   export execution_provider=openshift
+   export openshift_cluster_name=ocp-dev
+   export openshift_namespace=chaos-testing
+
+   python handler.py
+   ```
+
+3. **Expected event (excerpt)**:
+   ```json
+   {
+     "local_mode": true,
+     "execution_provider": "openshift",
+     "experiment_source": "/absolute/path/pod-chaos-termination.yml",
+     "on_prem_target": {
+       "provider": "openshift",
+       "cluster_name": "ocp-dev",
+       "namespace": "chaos-testing"
+     }
+   }
+   ```
+
+See [`LOCAL_MODE_TESTING_GUIDE.md`](LOCAL_MODE_TESTING_GUIDE.md) and
+[`openshift_local/README.md`](openshift_local/README.md) for detailed steps,
+including environment variables and cluster setup.
+
 ## Running Locally
 
 You can also run the handler locally using `dev_exec.py`:
@@ -200,6 +277,14 @@ The `requirements.txt` includes:
 - **boto3** - AWS SDK for Python
 - **requests** - HTTP library for API calls
 - **pytest** and related packages - For testing
+
+## Terraform Deployments
+
+- **AWS Lambda + S3**: `terraform/` (deploys the handler, IAM role, S3 bucket, etc.)
+- **EKS Cluster**: `../../../terraform/eks_infra/`
+- **Local OpenShift guidance**: `openshift_local/`
+
+Each directory includes its own `README.md` with step-by-step instructions.
 
 ## Local Packages
 
