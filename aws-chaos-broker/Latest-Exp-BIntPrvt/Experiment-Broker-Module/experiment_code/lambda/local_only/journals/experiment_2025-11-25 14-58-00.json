@@ -1,0 +1,129 @@
+{
+  "experiment": {
+    "version": "1.0.0",
+    "title": "Local Filesystem Sample Experiment",
+    "description": "Local-only sample experiment used for testing `local_mode=true`.\nThis experiment simulates a pod health check on a local or desktop cluster.\n",
+    "configuration": {
+      "cluster_name": "local-kube",
+      "namespace": "chaos-testing",
+      "pod_label_selector": "app=demo",
+      "local_mode": true,
+      "execution_mode": "local"
+    },
+    "steady-state-hypothesis": {
+      "title": "Pod responds to HTTP probe",
+      "probes": [
+        {
+          "type": "probe",
+          "name": "pod-http-check",
+          "tolerance": true,
+          "provider": {
+            "type": "python",
+            "module": "experiment_bofa.k8s.probes",
+            "func": "pod_is_ready",
+            "arguments": {
+              "namespace": "${namespace}",
+              "label_selector": "${pod_label_selector}"
+            }
+          }
+        }
+      ]
+    },
+    "method": [
+      {
+        "type": "action",
+        "name": "print-local-message",
+        "provider": {
+          "type": "python",
+          "module": "experiment_bofa.load.actions",
+          "func": "http_stress",
+          "arguments": {
+            "message": "This is a placeholder action for local testing.",
+            "duration": 5
+          }
+        }
+      }
+    ],
+    "rollbacks": []
+  },
+  "run": [
+    {
+      "output": null,
+      "error": "Function 'http_stress' not found in module 'experiment_bofa.load.actions'",
+      "start": "2025-11-25T14:58:37.478508",
+      "duration": 7.9e-05,
+      "tolerance_met": false,
+      "activity": {
+        "type": "action",
+        "name": "print-local-message",
+        "provider": {
+          "type": "python",
+          "module": "experiment_bofa.load.actions",
+          "func": "http_stress",
+          "arguments": {
+            "message": "This is a placeholder action for local testing.",
+            "duration": 5
+          }
+        }
+      }
+    }
+  ],
+  "rollbacks": [],
+  "chaoslib-version": "NA",
+  "platform": "Linux-5.10.201-213.748.amzn2.x86_64-x86_64-with-glibc2.26",
+  "node": "169.254.68.133",
+  "start": "2025-11-25T14:58:36.796109",
+  "status": "completed",
+  "deviated": false,
+  "steady_states": {
+    "before": {
+      "steady_state_met": true,
+      "probes": {
+        "output": true,
+        "start": "2025-11-25T14:58:36.796228",
+        "duration": 0.679989,
+        "tolerance_met": true,
+        "activity": {
+          "type": "probe",
+          "name": "pod-http-check",
+          "tolerance": true,
+          "provider": {
+            "type": "python",
+            "module": "experiment_bofa.k8s.probes",
+            "func": "pod_is_ready",
+            "arguments": {
+              "namespace": "${namespace}",
+              "label_selector": "${pod_label_selector}"
+            }
+          }
+        }
+      }
+    },
+    "after": {
+      "steady_state_met": true,
+      "probes": {
+        "output": true,
+        "start": "2025-11-25T14:58:37.478753",
+        "duration": 0.256849,
+        "tolerance_met": true,
+        "activity": {
+          "type": "probe",
+          "name": "pod-http-check",
+          "tolerance": true,
+          "provider": {
+            "type": "python",
+            "module": "experiment_bofa.k8s.probes",
+            "func": "pod_is_ready",
+            "arguments": {
+              "namespace": "${namespace}",
+              "label_selector": "${pod_label_selector}"
+            }
+          }
+        }
+      }
+    },
+    "during": []
+  },
+  "end": "2025-11-25T14:58:37.735706",
+  "duration": 0.939597
+}

@@ -19,9 +19,10 @@ fi
 echo "Activating virtual environment..."
 source chaos-venv/bin/activate
 
-# Set PYTHONPATH to include project root for editable packages
+# Set PYTHONPATH to include project root and chaos-toolkit-lite for editable packages
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+# Include chaos-toolkit-lite directory for experiment_runner_lite
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/chaos-toolkit-lite:$PYTHONPATH"
 
 # Verify packages are installed
 echo "Verifying packages are installed..."

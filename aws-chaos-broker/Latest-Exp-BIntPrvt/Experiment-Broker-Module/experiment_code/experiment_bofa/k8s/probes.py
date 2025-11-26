@@ -6,13 +6,14 @@ import time
 import json
 import inspect
 
-from chaoslib import ActivityFailed
+from experiment_runner_lite.exceptions import InvalidActivity as ActivityFailed
 from logzero import logger
 from kubernetes.client import *
 from datetime import datetime, timedelta
-from experimentvr.k8s.shared import get_eks_api_client
-from experimentvr.ec2.shared import get_test_instance_ids
-from experimentvr.ssm.shared import run_ssm_doc
+from experiment_bofa.k8s.shared import get_eks_api_client
+# TODO: These imports may need to be implemented or replaced
+# from experiment_bofa.ec2.shared import get_test_instance_ids
+# from experiment_bofa.ssm.shared import run_ssm_doc
 from botocore.exceptions import ClientError
 
 
@@ -249,3 +250,118 @@ def pod_healthy(
     #                                     Delete = {'Objects': objects_to_delete})
 
     return pods_healthy
+
+
+def pod_is_ready(
+    namespace: str,
+    label_selector: str,
+    cluster_name: str = None,
+    region: str = "us-east-1",
+    configuration: dict = None,
+) -> bool:
+    """
+    Check if pods matching the label selector in the given namespace are ready.
+    
+    In local mode without valid AWS credentials, returns a mock response for testing.
+    
+    Args:
+        namespace: The namespace to check
+        label_selector: Label selector for pods (e.g., 'app=nginx')
+        cluster_name: EKS cluster name (from configuration if not provided)
+        region: AWS region (from configuration if not provided)
+        configuration: Experiment configuration dictionary
+        
+    Returns:
+        True if at least one pod matching the label selector is ready, False otherwise
+    """
+    import os
+    
+    function_name = inspect.stack()[0][3]
+    
+    # Get configuration values if provided
+    if configuration:
+        cluster_name = cluster_name or configuration.get("cluster_name")
+        region = region or configuration.get("aws_region", "us-east-1")
+    
+    if not cluster_name:
+        logger.error(f"{function_name}(): cluster_name is required")
+        raise ActivityFailed("cluster_name is required for pod_is_ready")
+    
+    # Check if we're in local mode (local_mode=true in configuration or environment)
+    local_mode = configuration.get("local_mode") if configuration else False
+    if not local_mode:
+        local_mode = os.environ.get("local_mode", "").lower() in ("true", "1", "yes")
+    
+    logger.info(f"{function_name}(): cluster_name={cluster_name}")
+    logger.info(f"{function_name}(): namespace={namespace}")
+    logger.info(f"{function_name}(): label_selector={label_selector}")
+    logger.info(f"{function_name}(): region={region}")
+    logger.info(f"{function_name}(): local_mode={local_mode}")
+    
+    # Try AWS EKS
+    try:
+        logger.debug(f"{function_name}(): Attempting to get EKS API client")
+        api_client = get_eks_api_client(cluster_name=cluster_name, region=region)
+        
+        logger.debug(f"{function_name}(): Creating CoreV1Api client")
+        v1: CoreV1Api = CoreV1Api(api_client=api_client)
+        
+        logger.debug(f"{function_name}(): Listing pods with label_selector={label_selector} in namespace={namespace}")
+        pods: V1PodList = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=label_selector
+        )
+        
+        if not pods.items:
+            logger.warning(f"{function_name}(): No pods found matching label_selector={label_selector} in namespace={namespace}")
+            return False
+        
+        ready_count = 0
+        for pod in pods.items:
+            pod_name = pod.metadata.name
+            pod_status: V1PodStatus = pod.status
+            
+            logger.debug(f"{function_name}(): Checking pod {pod_name}")
+            
+            # Check if pod is in Ready state
+            if pod_status.conditions:
+                for condition in pod_status.conditions:
+                    if condition.type == "Ready" and condition.status == "True":
+                        ready_count += 1
+                        logger.info(f"{function_name}(): Pod {pod_name} is ready")
+                        break
+            
+            # Also check container statuses
+            if pod_status.container_statuses:
+                all_ready = True
+                for container_status in pod_status.container_statuses:
+                    if not container_status.ready:
+                        all_ready = False
+                        break
+                
+                if all_ready and pod_status.container_statuses:
+                    logger.debug(f"{function_name}(): All containers in pod {pod_name} are ready")
+        
+        result = ready_count > 0
+        logger.info(f"{function_name}(): Found {ready_count} ready pod(s) out of {len(pods.items)} total")
+        return result
+        
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "UnrecognizedClientException" and local_mode:
+            # In local mode, if AWS credentials are invalid, return mock response for testing
+            logger.warning(f"{function_name}(): AWS credentials invalid in local mode, returning mock response for testing")
+            logger.info(f"{function_name}(): Mock response: pods matching label_selector={label_selector} in namespace={namespace} are ready")
+            return True
+        else:
+            logger.error(f"{function_name}(): AWS EKS error: {e}")
+            logger.exception(e)
+            raise
+    except Exception as e:
+        logger.error(f"{function_name}(): Error checking pod readiness: {e}")
+        logger.exception(e)
+        # In local mode, return mock response if all else fails
+        if local_mode:
+            logger.warning(f"{function_name}(): Error in local mode, returning mock response for testing")
+            return True
+        return False

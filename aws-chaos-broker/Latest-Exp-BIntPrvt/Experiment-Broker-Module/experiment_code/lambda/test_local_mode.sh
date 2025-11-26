@@ -27,7 +27,8 @@ source chaos-venv/bin/activate
 # Set PYTHONPATH for local packages
 CODE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"          # experiment_code
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)" # repository root
-export PYTHONPATH="$CODE_ROOT:$PROJECT_ROOT:$PYTHONPATH"
+# Include chaos-toolkit-lite directory for experiment_runner_lite
+export PYTHONPATH="$CODE_ROOT:$PROJECT_ROOT:$PROJECT_ROOT/chaos-toolkit-lite:$PYTHONPATH"
 
 # Set local_mode environment variables
 echo "Setting local_mode environment variables..."

@@ -22,6 +22,9 @@ configure_logger(verbose=False)
 
 # name the package: resiliency (chaostoolkit-resiliency)
 
+# Constants
+NON_AWS_MODE_SKIP_SECRETS_MANAGER_MSG = "Non-AWS mode: Skipping Secrets Manager update"
+
 def get_brackets_replacement(value, replacement_map, default_replacement="unknown"):
     if isinstance(value, str):
         pattern = r'<<\s*(.+?)\s*>>'
@@ -61,6 +64,40 @@ def get_task_logs_arn(task_metadata, account_id: str):
     log_stream = log_options['awslogs-stream']
 
     return f"{log_group}:{log_stream}"
+
+
+def parse_execution_mode(local_mode_value):
+    """
+    Parse and normalize the local_mode flag to determine execution mode.
+    
+    Args:
+        local_mode_value: The local_mode value from event (can be bool, str, or None)
+        
+    Returns:
+        str: Execution mode - "aws", "local", or "openshift"
+        
+    The local_mode flag can be provided as a boolean or string (case-insensitive).
+    This determines which execution path the handler takes:
+      - "aws" (default): Loads experiments from S3, uses AWS services
+      - "local": Loads experiments from local filesystem, skips AWS services
+      - "openshift": Loads experiments from OpenShift storage, on-prem execution
+    """
+    # Normalize the input to a lowercase string
+    if isinstance(local_mode_value, bool):
+        mode_value = "true" if local_mode_value else "false"
+    else:
+        mode_value = str(local_mode_value).strip().lower() if local_mode_value else "false"
+
+    # Determine execution mode based on normalized value
+    if mode_value in {"false", "0", "no"}:
+        return "aws"
+    elif mode_value in {"openshift", "ocp", "onprem", "on-prem"}:
+        return "openshift"
+    elif mode_value in {"true", "1", "yes", "local"}:
+        return "local"
+    else:
+        # Default: treat empty/null as AWS, everything else as local
+        return "local" if mode_value not in {"", "none", "null"} else "aws"
 
 def handler(event, context):
     """Runs an experiment specified by `experiment_source`.
@@ -124,28 +161,43 @@ def handler(event, context):
     experiment_state = event.get("state")
     output_config = event.get("output_config")
 
-    mode_raw = event.get("local_mode", False)
-    if isinstance(mode_raw, bool):
-        mode_value = "true" if mode_raw else "false"
-    else:
-        mode_value = str(mode_raw).strip().lower()
+    # ============================================================================
+    # LOCAL_MODE LABEL LOGIC: Parse and normalize the local_mode flag
+    # ============================================================================
+    # The local_mode flag can be provided as a boolean or string (case-insensitive).
+    # This determines which execution path the handler takes:
+    #   - "aws" (default): Loads experiments from S3, uses AWS services
+    #   - "local": Loads experiments from local filesystem, skips AWS services
+    #   - "openshift": Loads experiments from OpenShift storage, on-prem execution
+    # ============================================================================
+    execution_mode = parse_execution_mode(event.get("local_mode", False))
 
-    if mode_value in {"false", "0", "no"}:
-        execution_mode = "aws"
-    elif mode_value in {"openshift", "ocp", "onprem", "on-prem"}:
-        execution_mode = "openshift"
-    elif mode_value in {"true", "1", "yes", "local"}:
-        execution_mode = "local"
-    else:
-        execution_mode = "local" if mode_value not in {"", "none", "null"} else "aws"
-
+    # Set both local_mode_label (for logging/tracking) and local_mode (boolean flag)
+    # local_mode_label preserves the actual execution mode string ("aws", "local", "openshift")
+    # local_mode is a boolean indicating whether we're in non-AWS mode
     event["local_mode_label"] = execution_mode
     event["local_mode"] = execution_mode != "aws"
 
     if experiment_source:
         logger.info("VS Runner Lite attempting to load experiment: %s", experiment_source)
 
+    # ============================================================================
+    # EXECUTION MODE BRANCHES: Load experiment based on execution_mode
+    # ============================================================================
+    # Three distinct execution paths based on the local_mode_label:
+    #   1. Local filesystem mode: Load from local file path
+    #   2. OpenShift mode: Load from OpenShift storage path (on-prem)
+    #   3. AWS mode (default): Load from S3 bucket
+    # ============================================================================
+    
     if execution_mode == "local":
+        # ========================================================================
+        # LOCAL FILESYSTEM MODE: Load experiment from local file system
+        # ========================================================================
+        # This mode is used for local development and testing. It loads the
+        # experiment YAML directly from the local filesystem path specified in
+        # experiment_source. All AWS services are skipped (skip_aws_services=True).
+        # ========================================================================
         execution_provider = event.get("execution_provider", "local-filesystem")
         logger.info("Local filesystem mode enabled - provider=%s", execution_provider)
 
@@ -165,6 +217,14 @@ def handler(event, context):
             }
         )
     elif execution_mode == "openshift":
+        # ========================================================================
+        # OPENSHIFT MODE: Load experiment from OpenShift storage (on-prem)
+        # ========================================================================
+        # This mode is used for on-premise OpenShift clusters. It loads the
+        # experiment YAML from OpenShift storage paths (e.g., persistent volumes).
+        # All AWS services are skipped (skip_aws_services=True) as this runs
+        # on-premises without AWS connectivity.
+        # ========================================================================
         execution_provider = "openshift"
         storage_base = event.get("openshift_storage_path") or os.environ.get(
             "OPENSHIFT_STORAGE_PATH"
@@ -199,7 +259,13 @@ def handler(event, context):
             }
         )
     else:
-        # AWS Lambda/ECS mode: load from S3
+        # ========================================================================
+        # AWS MODE (default): Load experiment from S3 bucket
+        # ========================================================================
+        # This is the default execution mode for AWS Lambda/ECS. It loads the
+        # experiment YAML from an S3 bucket specified in event["bucket_name"].
+        # AWS services are used throughout (skip_aws_services=False).
+        # ========================================================================
         try:
             obj, content_type = get_object_with_type(
                 bucket_name=event.get("bucket_name"),
@@ -219,13 +285,28 @@ def handler(event, context):
             }
         )
 
+    # ============================================================================
+    # EXPERIMENT EXECUTION: Run the loaded experiment
+    # ============================================================================
+    # Add local_mode to experiment configuration so activities can detect it
+    if "configuration" not in experiment:
+        experiment["configuration"] = {}
+    experiment["configuration"]["local_mode"] = execution_mode in ("local", "openshift")
+    experiment["configuration"]["execution_mode"] = execution_mode
+    
     experiment_journal = run_experiment(experiment)
     if experiment_journal.get("status") in ["completed", "success"]:
         event.update({"state": "done"})
     else:
         event.update({"state": "failed"})
 
-    # Only process ECS metadata and replacements if not in local mode
+    # ============================================================================
+    # AWS-SPECIFIC PROCESSING: ECS metadata and replacements (AWS mode only)
+    # ============================================================================
+    # Only process ECS metadata and apply dynamic replacements when running in
+    # AWS mode. In local/OpenShift modes, these AWS-specific operations are skipped
+    # to prevent errors and unnecessary AWS API calls.
+    # ============================================================================
     if execution_mode == "aws":
         region = os.getenv("AWS_REGION", "unknown")
         account_id = os.getenv("account_id", "unknown")
@@ -251,7 +332,13 @@ def handler(event, context):
         else:
             logger.info("Not running in ECS, skipping task metadata retrieval")
 
-    # Only upload to S3 if running in AWS mode and output config is provided
+    # ============================================================================
+    # AWS-SPECIFIC OUTPUT: S3 upload (AWS mode only)
+    # ============================================================================
+    # Only upload experiment journal to S3 when running in AWS mode and output
+    # configuration is provided. In local/OpenShift modes, S3 upload is skipped
+    # as AWS services are not available or desired.
+    # ============================================================================
     if execution_mode == "aws" and event.get("output_bucket") and event.get("output_path"):
         try:
             output_path = event["output_path"] + ("/" if event["output_path"].find("/") == -1 else "")
@@ -271,7 +358,58 @@ def handler(event, context):
             exc_str = traceback.format_exc()
             logger.error(f"Unable to upload experiment journal to S3: {exc_str}")
     elif execution_mode in {"local", "openshift"}:
-        logger.info("Non-AWS mode: Skipping S3 output upload")
+        # ========================================================================
+        # LOCAL/OPENSHIFT MODE OUTPUT: Save experiment journal to local file
+        # ========================================================================
+        try:
+            # Determine the local_only directory path relative to this file
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            local_only_dir = os.path.join(script_dir, "local_only")
+            journals_dir = os.path.join(local_only_dir, "journals")
+            
+            # Create journals directory if it doesn't exist
+            os.makedirs(journals_dir, exist_ok=True)
+            
+            # Generate filename similar to S3 key format
+            # Output is always JSON format, so use .json extension
+            experiment_name = ""
+            experiment_extension = ".json"
+            
+            # Extract experiment name from experiment_source if available
+            if experiment_source:
+                experiment_basename = os.path.basename(experiment_source)
+                # Remove extension to get base name (we'll use .json for output)
+                if "." in experiment_basename:
+                    experiment_name = "".join(experiment_basename.rsplit(".", 1)[0])
+                else:
+                    experiment_name = experiment_basename
+            
+            # Use experiment title if name is not available
+            if not experiment_name and experiment_journal.get("experiment", {}).get("title"):
+                experiment_name = experiment_journal["experiment"]["title"]
+                experiment_name = re.sub(r'[^\w\-_]', '_', experiment_name)  # Sanitize filename
+            
+            # Default name if still not available
+            if not experiment_name:
+                experiment_name = "experiment"
+            
+            # Create timestamp for filename (replace spaces and colons with dashes)
+            timestamp = str(datetime.now().replace(second=0, microsecond=0)).replace(":", "-").replace(" ", "-")
+            
+            # Generate filename
+            filename = f"{experiment_name}_{timestamp}{experiment_extension}"
+            filepath = os.path.join(journals_dir, filename)
+            
+            # Write experiment journal to file
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(experiment_journal, f, indent=2, default=str)
+            
+            logger.info(f"Experiment journal saved to local file: {filepath}")
+            
+        except Exception as e:
+            exc_str = traceback.format_exc()
+            logger.warning(f"Unable to save experiment journal to local file: {exc_str}")
+            logger.info("Non-AWS mode: Skipping local file output (continuing with execution)")
 
     event.update({"response": json.dumps(experiment_journal)})
     event.update({"report_capture": str(report_capture.getvalue())})
@@ -296,10 +434,15 @@ def _capture_experiment_logs():
 if __name__ == "__main__":
     print("TASK START")
 
-    secret_arn = os.environ['secret_arn']
-    secrets_client = aws_client('secretsmanager')
-    secret_response = secrets_client.get_secret_value(SecretId=secret_arn)
-    params = json.loads(secret_response['secretstring'])
+    # ============================================================================
+    # __MAIN__ BLOCK: Local execution mode setup
+    # ============================================================================
+    # This block handles local execution when running handler.py directly.
+    # It parses environment variables to determine the execution mode:
+    #   - local_mode=true: Local filesystem mode (no AWS services)
+    #   - local_mode=openshift: OpenShift/on-prem mode (no AWS services)
+    #   - local_mode=false or unset: AWS mode (requires AWS credentials/services)
+    # ============================================================================
 
     variables = ["bucket_name", "experiment_source", "output_bucket", "output_path"]
     event = {}
@@ -309,19 +452,25 @@ if __name__ == "__main__":
             event[var] = val
 
     local_mode_env = os.environ.get("local_mode", "false")
-    local_mode_label = (
-        local_mode_env.lower()
-        if isinstance(local_mode_env, str)
-        else ("true" if local_mode_env else "false")
-    )
+    execution_mode = parse_execution_mode(local_mode_env)
 
-    if local_mode_label in {"true", "1", "yes", "local"}:
+    if execution_mode == "local":
+        # ========================================================================
+        # LOCAL FILESYSTEM MODE: Skip AWS services
+        # ========================================================================
         event["local_mode"] = True
         event["execution_mode"] = "local"
         event["execution_provider"] = os.environ.get("execution_provider", "local-filesystem")
         event["skip_aws_services"] = True
         logger.info("Local filesystem mode enabled via __main__ block")
-    elif local_mode_label in {"openshift", "ocp", "onprem", "on-prem"}:
+        
+        # AWS-specific code (secret_arn, secrets_client) is not initialized
+        # to prevent errors when AWS credentials/services are not available
+        
+    elif execution_mode == "openshift":
+        # ========================================================================
+        # OPENSHIFT MODE: Skip AWS services
+        # ========================================================================
         event["local_mode"] = "openshift"
         event["execution_mode"] = "openshift"
         event["execution_provider"] = "openshift"
@@ -340,7 +489,18 @@ if __name__ == "__main__":
             event.get("openshift_storage_path"),
             event.get("on_prem_target", {}),
         )
+        
+        # AWS-specific code (secret_arn, secrets_client) is not initialized
+        # to prevent errors when AWS credentials/services are not available
+        
     else:
+        # ========================================================================
+        # AWS MODE: Initialize AWS services (Secrets Manager)
+        # ========================================================================
+        # AWS mode requires AWS credentials and services. Initialize secret_arn
+        # and secrets_client here (only in AWS mode) to update experiment results
+        # in AWS Secrets Manager after execution.
+        # ========================================================================
         missing = [var for var in variables if var not in event]
         if missing:
             raise KeyError(f"Missing required environment variables for AWS execution: {missing}")
@@ -349,6 +509,12 @@ if __name__ == "__main__":
         event["execution_provider"] = "aws"
         event["skip_aws_services"] = False
         logger.info("AWS mode enabled - execution_mode set to 'aws'")
+        
+        # Initialize AWS Secrets Manager client only in AWS mode
+        secret_arn = os.environ['secret_arn']
+        secrets_client = aws_client('secretsmanager')
+        secret_response = secrets_client.get_secret_value(SecretId=secret_arn)
+        params = json.loads(secret_response['secretstring'])
     
     print(event)
 
@@ -363,33 +529,51 @@ if __name__ == "__main__":
         }
     except Exception as e:
         print("HANDLER FAIL")
+        # ========================================================================
+        # ERROR HANDLING: Update AWS Secrets Manager (AWS mode only)
+        # ========================================================================
         failure_data = {
             "state": "failed",
-            "error": "str(e)",
+            "error": str(e),
             "details": "Handler processing failed during execution",
         }
-        update_response = secrets_client.update_secret(
-            SecretId = secret_arn,
-            SecretString = json.dumps(failure_data)
-        )
+        # Only update secret if running in AWS mode (secrets_client is initialized)
+        if event.get("execution_mode") == "aws":
+            update_response = secrets_client.update_secret(
+                SecretId = secret_arn,
+                SecretString = json.dumps(failure_data)
+            )
+        else:
+            logger.info(NON_AWS_MODE_SKIP_SECRETS_MANAGER_MSG)
         raise
 
     try:
-        #print(f" dumped result json \n", json.dumps(result_data, indent=4))
-        update_response = secrets_client.update_secret(
-            SecretId = secret_arn,
-            SecretString = json.dumps(result_data)
-        )
-        print("TASK COMPLETE")
+        # ========================================================================
+        # SUCCESS HANDLING: Update AWS Secrets Manager (AWS mode only)
+        # ========================================================================
+        # Only update secret if running in AWS mode (secrets_client is initialized)
+        if event.get("execution_mode") == "aws":
+            update_response = secrets_client.update_secret(
+                SecretId = secret_arn,
+                SecretString = json.dumps(result_data)
+            )
+            print("TASK COMPLETE")
+        else:
+            logger.info(NON_AWS_MODE_SKIP_SECRETS_MANAGER_MSG)
+            print("TASK COMPLETE (local mode - no Secrets Manager update)")
     except Exception as e:
         print("TASK FAIL")
         failure_data = {
             "state": "failed",
-            "error": "str(e)",
+            "error": str(e),
             "details": "task processing failed during execution",
         }
-        update_response = secrets_client.update_secret(
-            SecretId = secret_arn,
-            SecretString = json.dumps(failure_data)
-        )
+        # Only update secret if running in AWS mode (secrets_client is initialized)
+        if event.get("execution_mode") == "aws":
+            update_response = secrets_client.update_secret(
+                SecretId = secret_arn,
+                SecretString = json.dumps(failure_data)
+            )
+        else:
+            logger.info(NON_AWS_MODE_SKIP_SECRETS_MANAGER_MSG)
         raise

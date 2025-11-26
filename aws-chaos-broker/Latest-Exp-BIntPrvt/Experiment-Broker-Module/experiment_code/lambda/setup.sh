@@ -69,10 +69,11 @@ else
     echo "⚠ Warning: experiment_bofa directory not found"
 fi
 
-# Install experiment_runner_lite
-if [ -d "$PROJECT_ROOT/experiment_runner_lite" ]; then
-    echo "Installing experiment_runner_lite..."
-    cd "$PROJECT_ROOT/experiment_runner_lite"
+# Install experiment_runner_lite (now in chaos-toolkit-lite directory)
+EXPERIMENT_RUNNER_LITE_DIR="$PROJECT_ROOT/chaos-toolkit-lite/experiment_runner_lite"
+if [ -d "$EXPERIMENT_RUNNER_LITE_DIR" ]; then
+    echo "Installing experiment_runner_lite from chaos-toolkit-lite..."
+    cd "$EXPERIMENT_RUNNER_LITE_DIR"
     if [ ! -f "setup.py" ]; then
         echo "  Creating minimal setup.py for experiment_runner_lite..."
         cat > setup.py << 'SETUP_EOF'
@@ -81,13 +82,15 @@ setup(
     name="experiment_runner_lite",
     version="0.1.0",
     packages=find_packages(),
-    install_requires=["boto3"]
+    install_requires=["boto3>=1.26.0"],
+    python_requires=">=3.9"
 )
 SETUP_EOF
     fi
     pip install -e . --no-build-isolation 2>/dev/null || pip install -e . || echo "⚠ Warning: experiment_runner_lite installation failed"
 else
-    echo "⚠ Warning: experiment_runner_lite directory not found"
+    echo "⚠ Warning: experiment_runner_lite directory not found at $EXPERIMENT_RUNNER_LITE_DIR"
+    echo "  Looking for: chaos-toolkit-lite/experiment_runner_lite"
 fi
 
 # Install experiment_broker_logging
@@ -115,7 +118,8 @@ fi
 cd "$SCRIPT_DIR"
 
 # Set PYTHONPATH for verification (helps with editable installs)
-export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+# Include project root and chaos-toolkit-lite directory
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/chaos-toolkit-lite:$PYTHONPATH"
 
 # Verify installation
 echo ""
