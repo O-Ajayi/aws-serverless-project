@@ -121,4 +121,4 @@ We then return the response from boto3 as the result of the action. This conclud
 
 ## Deployment
 Deploy using the CI/CD pipeline of your choice. An example CDK and AWS CodePipeline-based build is included in another repo called  "Exeriment-Pipeline" 
-To start, simply issue `cdk deploy` in the `pipeline_infra` directory of this repository.
+To start, simply issue `cdk deploy` in the `pipeline_infra` directory of this repository. You can test more with this framework
