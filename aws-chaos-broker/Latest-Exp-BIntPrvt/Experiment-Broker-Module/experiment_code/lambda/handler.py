@@ -224,29 +224,43 @@ def handler(event, context):
         # experiment YAML from OpenShift storage paths (e.g., persistent volumes).
         # All AWS services are skipped (skip_aws_services=True) as this runs
         # on-premises without AWS connectivity.
+        # 
+        # Experiment files are stored in persistent volume at:
+        #   /app/local_only/experiments/
+        # The experiment_source can be:
+        #   - Absolute path: /app/local_only/experiments/experiment.yaml
+        #   - Relative path: experiment.yaml (resolved to /app/local_only/experiments/experiment.yaml)
         # ========================================================================
         execution_provider = "openshift"
         storage_base = event.get("openshift_storage_path") or os.environ.get(
-            "OPENSHIFT_STORAGE_PATH"
+            "OPENSHIFT_STORAGE_PATH", "/app/local_only"
         )
         on_prem_target = event.get("on_prem_target", {})
-
+        
         logger.info(
             "OpenShift mode enabled - storage_base=%s target=%s",
             storage_base or "(not provided)",
             on_prem_target or "not specified",
         )
-
-        if storage_base and not os.path.isabs(experiment_source):
-            experiment_source = os.path.join(storage_base, experiment_source)
-
+        
+        # Resolve experiment source path
+        # If not absolute, join with storage_base/experiments directory
+        if not os.path.isabs(experiment_source):
+            # Default to experiments subdirectory
+            experiments_dir = os.path.join(storage_base, "experiments")
+            experiment_source = os.path.join(experiments_dir, experiment_source)
+        else:
+            # Already absolute, use as-is
+            experiment_source = experiment_source
+        
+        # Ensure absolute path
         experiment_source = os.path.abspath(experiment_source)
-
+        
         if not os.path.exists(experiment_source):
             raise FileNotFoundError(
                 f"Experiment file not found for OpenShift mode: {experiment_source}"
             )
-
+        
         logger.info("Loading experiment from OpenShift storage: %s", experiment_source)
         experiment = load_experiment(experiment_source)
         event.update(

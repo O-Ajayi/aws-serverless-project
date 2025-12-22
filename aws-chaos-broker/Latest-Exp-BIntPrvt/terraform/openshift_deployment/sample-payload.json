@@ -1,0 +1,19 @@
+{
+  "Payload": {
+    "list": [
+      {
+        "local_mode": "openshift",
+        "experiment_source": "experiment.yaml",
+        "openshift_storage_path": "/app/local_only",
+        "configuration": {
+          "cluster_name": "chaos-broker-eks",
+          "namespace": "default",
+          "pod_label_selector": "app=nginx",
+          "aws_region": "us-east-1"
+        }
+      }
+    ],
+    "state": "pending"
+  }
+}
+

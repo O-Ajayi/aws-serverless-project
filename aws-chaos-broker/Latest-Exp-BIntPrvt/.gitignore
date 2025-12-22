@@ -16,6 +16,7 @@ terraform.rc
 .tmp
 *.egg-info
 /.idea/
+.DS_Store
 
 Experiment-Broker-Module/experiment_code/build
 terraform/lambda_infra/build_temp

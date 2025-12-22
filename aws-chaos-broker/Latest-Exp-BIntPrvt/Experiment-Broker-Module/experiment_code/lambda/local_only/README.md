@@ -18,6 +18,8 @@ local_only/
 
 ## Quick Start
 
+### macOS/Linux (Bash)
+
 ```bash
 cd Experiment-Broker-Module/experiment_code/lambda
 source chaos-venv/bin/activate
@@ -27,6 +29,38 @@ export experiment_source="$(pwd)/local_only/experiments/experiment.yaml"
 
 python handler.py
 ```
+
+### Windows (PowerShell)
+
+```powershell
+cd Experiment-Broker-Module\experiment_code\lambda
+.\chaos-venv\Scripts\Activate.ps1
+
+$env:local_mode = "true"
+$env:experiment_source = "$(Get-Location)\local_only\experiments\experiment.yaml"
+
+python handler.py
+```
+
+### Using the Test Script
+
+**macOS/Linux:**
+```bash
+cd Experiment-Broker-Module/experiment_code/lambda
+./test_local_mode.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+cd Experiment-Broker-Module\experiment_code\lambda
+.\test_local_mode.ps1
+```
+
+The test script will automatically:
+1. Activate the virtual environment
+2. Set up the required environment variables
+3. Run the handler with the local experiment file
+4. Verify the handler executes successfully
 
 You should see log messages indicating the handler loaded the experiment from
 the local filesystem and skipped AWS service calls.

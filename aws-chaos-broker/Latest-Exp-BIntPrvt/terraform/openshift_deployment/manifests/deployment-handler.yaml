@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-broker-handler
+  namespace: chaos-broker
+  labels:
+    app: chaos-broker
+    component: handler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: chaos-broker
+      component: handler
+  template:
+    metadata:
+      labels:
+        app: chaos-broker
+        component: handler
+    spec:
+      containers:
+      - name: handler
+        image: chaos-broker-handler:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: PORT
+        - name: FUNCTION_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: FUNCTION_NAME
+        - name: FUNCTION_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: FUNCTION_VERSION
+        - name: local_mode
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: local_mode
+        - name: execution_mode
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: execution_mode
+        - name: execution_provider
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: execution_provider
+        volumeMounts:
+        - name: storage
+          mountPath: /app/local_only
+        - name: experiments
+          mountPath: /app/experiments
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: chaos-broker-storage
+      - name: experiments
+        emptyDir: {}
+

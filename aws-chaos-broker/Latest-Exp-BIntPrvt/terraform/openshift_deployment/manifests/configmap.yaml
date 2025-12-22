@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-broker-config
+  namespace: chaos-broker
+  labels:
+    app: chaos-broker
+data:
+  # Handler service configuration
+  HANDLER_SERVICE_URL: "http://chaos-broker-handler:8080"
+  PORT: "8080"
+  FUNCTION_NAME: "chaos-broker-handler"
+  FUNCTION_VERSION: "$LATEST"
+  MEMORY_LIMIT: "512"
+  
+  # Orchestrator service configuration
+  ORCHESTRATOR_PORT: "8081"
+  MAX_CONCURRENCY: "1"
+  PERSISTENT_VOLUME_PATH: "/app/local_only"
+  
+  # Execution mode
+  local_mode: "openshift"
+  execution_mode: "openshift"
+  execution_provider: "openshift"
+  skip_aws_services: "true"
+  
+  # OpenShift storage paths (mounted PVC path)
+  openshift_storage_path: "/app/local_only"
+  
+  # Logging
+  LOG_LEVEL: "INFO"
+

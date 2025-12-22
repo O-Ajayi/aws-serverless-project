@@ -1,0 +1,29 @@
+# OpenShift/Kubernetes Configuration
+kubeconfig_path = "~/.kube/config"
+kube_context    = "my-openshift-context"  # Optional: leave null for default context
+
+# Deployment Configuration
+namespace            = "chaos-broker"
+handler_replicas     = 2
+orchestrator_replicas = 1
+
+# Container Images
+# These should be built and pushed to your container registry
+handler_image      = "chaos-broker-handler:latest"
+orchestrator_image = "chaos-broker-orchestrator:latest"
+
+# Storage Configuration
+storage_size  = "10Gi"
+storage_class = ""  # Leave empty for default storage class, or specify one
+
+# Execution Mode
+local_mode           = true
+openshift_storage_path = "/mnt/chaos-broker/storage"
+
+# Tags
+tags = {
+  app        = "chaos-broker"
+  managed-by = "terraform"
+  environment = "local"
+}
+

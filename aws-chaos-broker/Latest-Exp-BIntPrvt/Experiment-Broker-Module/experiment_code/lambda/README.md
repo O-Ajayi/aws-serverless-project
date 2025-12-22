@@ -11,6 +11,8 @@ This directory contains the AWS Lambda handler for running experiments, with sup
 
 ### Quick Setup (Recommended)
 
+#### macOS/Linux (Bash)
+
 Use the provided `setup.sh` script for automated setup:
 
 ```bash
@@ -21,7 +23,21 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-The script will:
+#### Windows (PowerShell)
+
+Use the provided `setup.ps1` script for automated setup:
+
+```powershell
+# Run the setup script
+.\setup.ps1
+```
+
+**Note:** If you encounter an execution policy error, you may need to run:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+The setup scripts will:
 1. Create a virtual environment (if it doesn't exist)
 2. Install dependencies from `requirements.txt`
 3. Install local packages (`experiment_bofa`, `experiment_runner_lite`, `experiment_broker_logging`)
@@ -31,16 +47,31 @@ The script will:
 
 #### 1. Create and Activate Virtual Environment
 
+**macOS/Linux:**
 ```bash
 # From the lambda directory
 python3 -m venv chaos-venv
 
 # Activate virtual environment
-# On macOS/Linux:
 source chaos-venv/bin/activate
+```
 
-# On Windows:
-chaos-venv\Scripts\activate
+**Windows (PowerShell):**
+```powershell
+# From the lambda directory
+python -m venv chaos-venv
+
+# Activate virtual environment
+.\chaos-venv\Scripts\Activate.ps1
+```
+
+**Windows (Command Prompt):**
+```cmd
+# From the lambda directory
+python -m venv chaos-venv
+
+# Activate virtual environment
+chaos-venv\Scripts\activate.bat
 ```
 
 #### 2. Install Dependencies
@@ -103,6 +134,7 @@ Once all dependencies are installed, you can run the tests:
 
 ### Recommended: Use the test runner script
 
+**macOS/Linux:**
 ```bash
 # Run all tests (automatically activates venv)
 ./run_tests.sh
@@ -114,11 +146,36 @@ Once all dependencies are installed, you can run the tests:
 ./run_tests.sh TestHandlerLocalMode.test_local_mode_loads_from_file_system
 ```
 
+**Windows (PowerShell):**
+```powershell
+# Activate virtual environment first
+.\chaos-venv\Scripts\Activate.ps1
+
+# Then run tests
+python -m unittest test_handler_local_mode -v
+
+# Run a specific test
+python -m unittest test_handler_local_mode.TestHandlerLocalMode.test_local_mode_loads_from_file_system
+```
+
 ### Manual: Activate virtual environment first
 
+**macOS/Linux:**
 ```bash
 # IMPORTANT: Activate the virtual environment first!
 source chaos-venv/bin/activate
+
+# Then run tests
+python -m unittest test_handler_local_mode -v
+
+# Run a specific test
+python -m unittest test_handler_local_mode.TestHandlerLocalMode.test_local_mode_loads_from_file_system
+```
+
+**Windows (PowerShell):**
+```powershell
+# IMPORTANT: Activate the virtual environment first!
+.\chaos-venv\Scripts\Activate.ps1
 
 # Then run tests
 python -m unittest test_handler_local_mode -v
@@ -175,6 +232,8 @@ The handler supports two execution paths:
    ```
 
 2. **Set environment variables and run the handler**
+
+   **macOS/Linux:**
    ```bash
    cd ../../Experiment-Broker-Module/experiment_code/lambda
    source chaos-venv/bin/activate
@@ -186,6 +245,26 @@ The handler supports two execution paths:
    export openshift_namespace=chaos-testing
 
    python handler.py
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   cd ..\..\Experiment-Broker-Module\experiment_code\lambda
+   .\chaos-venv\Scripts\Activate.ps1
+
+   $env:local_mode = "true"
+   $env:experiment_source = "$(Get-Location)\..\..\..\terraform\eks_infra\experiments\pod-chaos-termination.yml"
+   $env:execution_provider = "openshift"
+   $env:openshift_cluster_name = "ocp-dev"
+   $env:openshift_namespace = "chaos-testing"
+
+   python handler.py
+   ```
+
+   **Or use the test script:**
+   ```powershell
+   # Run the local mode test script (automatically sets up environment)
+   .\test_local_mode.ps1
    ```
 
 3. **Expected event (excerpt)**:
@@ -210,46 +289,117 @@ including environment variables and cluster setup.
 
 You can also run the handler locally using `dev_exec.py`:
 
+**macOS/Linux:**
 ```bash
+# Activate virtual environment first
+source chaos-venv/bin/activate
+
+python dev_exec.py
+```
+
+**Windows (PowerShell):**
+```powershell
+# Activate virtual environment first
+.\chaos-venv\Scripts\Activate.ps1
+
 python dev_exec.py
 ```
 
 Make sure to update the `experiment_source` path in `dev_exec.py` to point to a valid experiment YAML file on your system.
+
+### Testing Local-Only Mode
+
+For testing the handler in `local_only` mode, you can use the provided test scripts:
+
+**macOS/Linux:**
+```bash
+# Run the local mode test script
+./test_local_mode.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+# Run the local mode test script
+.\test_local_mode.ps1
+```
+
+These scripts will:
+1. Activate the virtual environment
+2. Set up the required environment variables
+3. Test the handler with a local experiment file
+4. Verify the handler executes successfully in local mode
+
+See [`local_only/README.md`](local_only/README.md) for more details on local-only testing.
 
 ## Troubleshooting
 
 ### ImportError: No module named 'boto3'
 
 Make sure you've activated your virtual environment and installed requirements:
+
+**macOS/Linux:**
 ```bash
 source chaos-venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+.\chaos-venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
 ### ModuleNotFoundError: No module named 'experiment_bofa'
 
 The local `experiment_bofa` package needs to be installed:
+
+**macOS/Linux:**
 ```bash
 # From the project root
 cd ../../Experiment-Broker-Module/experiment_code/experiment_bofa
 pip install -e . --no-build-isolation
 ```
 
+**Windows (PowerShell):**
+```powershell
+# From the project root
+cd ..\..\Experiment-Broker-Module\experiment_code\experiment_bofa
+pip install -e . --no-build-isolation
+```
+
 ### ModuleNotFoundError: No module named 'experiment_runner_lite'
 
 The local `experiment_runner_lite` package needs to be installed:
+
+**macOS/Linux:**
 ```bash
 # From the project root
 cd ../../experiment_runner_lite
 pip install -e . --no-build-isolation
 ```
 
+**Windows (PowerShell):**
+```powershell
+# From the project root
+cd ..\..\experiment_runner_lite
+pip install -e . --no-build-isolation
+```
+
 ### ModuleNotFoundError: No module named 'experiment_broker_logging'
 
 The local `experiment_broker_logging` package needs to be installed:
+
+**macOS/Linux:**
 ```bash
 # From the project root
 cd ../../Experiment-Broker-Logging-Module
+pip install -e . --no-build-isolation
+```
+
+**Windows (PowerShell):**
+```powershell
+# From the project root
+cd ..\..\Experiment-Broker-Logging-Module
 pip install -e . --no-build-isolation
 ```
 
@@ -257,17 +407,28 @@ pip install -e . --no-build-isolation
 
 This usually means:
 1. Dependencies are not installed - run `pip install -r requirements.txt`
-2. Local packages are not installed - run `./setup.sh` or install them manually as shown above
+2. Local packages are not installed - run `./setup.sh` (macOS/Linux) or `.\setup.ps1` (Windows) or install them manually as shown above
 3. Virtual environment is not activated - make sure to activate it first
 
 ### pip install -e . fails with "No module named pip"
 
 This means your virtual environment is broken. Recreate it:
+
+**macOS/Linux:**
 ```bash
 deactivate  # if activated
 rm -rf chaos-venv
 python3 -m venv chaos-venv
 source chaos-venv/bin/activate
+pip install --upgrade pip setuptools wheel
+```
+
+**Windows (PowerShell):**
+```powershell
+deactivate  # if activated
+Remove-Item -Recurse -Force chaos-venv
+python -m venv chaos-venv
+.\chaos-venv\Scripts\Activate.ps1
 pip install --upgrade pip setuptools wheel
 ```
 
@@ -299,4 +460,5 @@ These packages are not on PyPI and must be installed in development mode using `
 
 - The local packages must be installed in development mode (`-e` flag) so code changes are reflected immediately
 - Tests use mocking, so no actual AWS credentials or services are needed
-- The `setup.sh` script handles all installation steps automatically
+- The `setup.sh` (macOS/Linux) or `setup.ps1` (Windows) script handles all installation steps automatically
+- For Windows users, if you encounter PowerShell execution policy errors, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`

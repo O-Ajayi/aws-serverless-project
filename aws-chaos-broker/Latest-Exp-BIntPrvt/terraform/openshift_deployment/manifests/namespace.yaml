@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos-broker
+  labels:
+    name: chaos-broker
+    app: chaos-broker
+

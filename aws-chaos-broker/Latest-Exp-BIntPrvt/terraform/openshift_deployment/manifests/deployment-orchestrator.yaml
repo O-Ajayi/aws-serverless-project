@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-broker-orchestrator
+  namespace: chaos-broker
+  labels:
+    app: chaos-broker
+    component: orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chaos-broker
+      component: orchestrator
+  template:
+    metadata:
+      labels:
+        app: chaos-broker
+        component: orchestrator
+    spec:
+      containers:
+      - name: orchestrator
+        image: chaos-broker-orchestrator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+          name: http
+          protocol: TCP
+        env:
+        - name: HANDLER_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: HANDLER_SERVICE_URL
+        - name: ORCHESTRATOR_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: ORCHESTRATOR_PORT
+        - name: MAX_CONCURRENCY
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: MAX_CONCURRENCY
+        - name: PERSISTENT_VOLUME_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: PERSISTENT_VOLUME_PATH
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: chaos-broker-config
+              key: LOG_LEVEL
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+

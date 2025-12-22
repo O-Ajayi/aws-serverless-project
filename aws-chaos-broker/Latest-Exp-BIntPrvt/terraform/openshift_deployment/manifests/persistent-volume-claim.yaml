@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chaos-broker-storage
+  namespace: chaos-broker
+  labels:
+    app: chaos-broker
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  # For CRC/local OpenShift, uncomment one of these:
+  # Option 1: Use hostpath storage class (if configured)
+  # storageClassName: hostpath
+  # Option 2: Use emptyDir (no persistence, for testing only)
+  # (Comment out the entire PVC and use emptyDir volumes instead)
+  # Option 3: Leave empty for default storage class (may not work on CRC)
+

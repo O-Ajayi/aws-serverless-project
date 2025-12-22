@@ -1,0 +1,18 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: chaos-broker-handler
+  namespace: chaos-broker
+  labels:
+    app: chaos-broker
+    component: handler
+spec:
+  to:
+    kind: Service
+    name: chaos-broker-handler
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Allow
+
