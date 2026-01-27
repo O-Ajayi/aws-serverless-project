@@ -21,11 +21,12 @@ COPY Experiment-Broker-Module/experiment_code/lambda/requirements.txt /build/req
 COPY Experiment-Broker-Module/experiment_code/lambda/handler.py /build/handler.py
 
 # Install Python dependencies
+# Note: Installing packages normally (not editable) for multi-stage build compatibility
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -e /build/experiment_bofa && \
-    pip install --no-cache-dir -e /build/experiment_runner_lite && \
-    pip install --no-cache-dir -e /build/Experiment-Broker-Logging-Module
+    pip install --no-cache-dir /build/experiment_bofa && \
+    pip install --no-cache-dir /build/experiment_runner_lite && \
+    pip install --no-cache-dir /build/Experiment-Broker-Logging-Module
 
 # Final stage
 FROM python:3.9-slim

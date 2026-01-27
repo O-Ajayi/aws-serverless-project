@@ -87,7 +87,16 @@ The solution requires the following local packages to be available:
 
 ## Quick Start
 
+### Container Engine Options
+
+This deployment supports both Docker and Podman:
+
+- **Docker**: Use the scripts in `scripts/` directory (see below)
+- **Podman**: See the [Podman Guide](podman/README.md) for Podman-specific instructions
+
 ### 1. Build Container Images
+
+**Using Docker (default):**
 
 ```bash
 cd terraform/openshift_deployment
@@ -98,6 +107,10 @@ cd terraform/openshift_deployment
 # Or specify custom registry and tag
 REGISTRY=my-registry.com IMAGE_TAG=v1.0.0 ./scripts/build-images.sh
 ```
+
+**Using Podman:**
+
+See [podman/README.md](podman/README.md) for Podman-specific build and run instructions.
 
 ### 2. Import Images to OpenShift
 
@@ -162,6 +175,14 @@ terraform/openshift_deployment/
 ├── docker/
 │   ├── Dockerfile                    # Handler service container
 │   └── Dockerfile.orchestrator       # Orchestrator service container
+├── podman/
+│   ├── README.md                     # Podman-specific guide
+│   ├── sample-payload.json           # Example payload for Podman
+│   └── scripts/
+│       ├── build-images.sh           # Build images with Podman
+│       ├── run-handler.sh            # Run handler container
+│       ├── run-orchestrator.sh       # Run orchestrator container
+│       └── cleanup.sh                # Clean up containers/images
 ├── orchestrator/
 │   ├── handler_service.py            # HTTP wrapper for handler.py
 │   └── orchestrator.py               # Step Functions replacement
@@ -181,7 +202,7 @@ terraform/openshift_deployment/
 │   ├── outputs.tf                    # Output values
 │   └── terraform.tfvars.example      # Example configuration
 ├── scripts/
-│   ├── build-images.sh               # Build container images
+│   ├── build-images.sh               # Build container images (Docker)
 │   └── deploy.sh                     # Deployment script
 ├── sample-payload.json               # Example orchestrator payload
 └── README.md                         # This file

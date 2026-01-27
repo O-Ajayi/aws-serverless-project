@@ -1,0 +1,24 @@
+#!groovy
+@Library('latest') _
+pythonPipelinePlugin {
+
+    ait = "45691"
+    spk = "CAPTOOLS"
+    repo = "Experiment-Broker-Module"
+
+    srcPath = "src"
+    pythonVersion = "3.13"
+    shell = "/bin/bash"
+    shellType = "bash"
+    cleanWorkspace = true
+
+    executeCreateArtifact = true
+    executePublishArtifact = true
+    pyPackageType = "wheel"
+
+    executeOADCodeScan = true
+    OADProjectname = "Experiment-Broker-Module"
+    OADProjectSrc = [src: "src", includePattern:"*.py", excludePattern:"*git*, *venv*"]
+    enableBuildJobChaining = false
+    
+}

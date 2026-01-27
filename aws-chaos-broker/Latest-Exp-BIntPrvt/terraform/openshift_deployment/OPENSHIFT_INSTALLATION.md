@@ -154,3 +154,4 @@ After successfully installing CRC:
 CRC (CodeReady Containers) has been renamed to **Red Hat OpenShift Local**, but the command-line tool is still called `crc`. When searching for documentation or downloads, you may see either name.
 
 
+
